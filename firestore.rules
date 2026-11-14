@@ -1,0 +1,309 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Hardened Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // Synced from /admins.txt (one verified email per line)
+    function isAdmin() {
+      return isVerifiedUser() && request.auth.token.email in [
+        'prodigyeditshelp@gmail.com'
+      ];
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidHandle(handle) {
+      return handle is string
+        && handle.size() >= 2
+        && handle.size() <= 24
+        && handle.matches('^[a-z0-9_\\-]+$')
+        && !(handle in ['admin', 'dashboard', 'auth', 'login', 'directory', 'api', 'settings']);
+    }
+
+    function isNotSuspendedOrBanned(data) {
+      return data.moderationStatus in ['active', 'warned']
+        || (data.moderationStatus == 'suspended' && data.suspendedUntil > 0 && request.time.toMillis() >= data.suspendedUntil);
+    }
+
+    function isValidProfile(data) {
+      return data.keys().hasAll([
+          'ownerUid', 'handle', 'displayName', 'bio', 'location',
+          'avatarUrl', 'bannerUrl', 'backgroundUrl', 'accentColor',
+          'cardOpacity', 'cardBlur', 'enterGateEnabled', 'enterGateText',
+          'audioUrl', 'audioTitle', 'effect', 'linkLayout',
+          'badges', 'links', 'views', 'moderationStatus',
+          'moderationReason', 'suspendedUntil', 'warningCount',
+          'lastWarningAckAt', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerUid', 'handle', 'displayName', 'bio', 'location',
+          'avatarUrl', 'bannerUrl', 'backgroundUrl', 'accentColor',
+          'cardOpacity', 'cardBlur', 'enterGateEnabled', 'enterGateText',
+          'audioUrl', 'audioTitle', 'effect', 'linkLayout',
+          'badges', 'hiddenBadges', 'links', 'views', 'moderationStatus',
+          'moderationReason', 'suspendedUntil', 'warningCount',
+          'lastWarningAckAt', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.ownerUid)
+        && isValidHandle(data.handle)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 48
+        && data.bio is string && data.bio.size() <= 320
+        && data.location is string && data.location.size() <= 48
+        && data.avatarUrl is string && data.avatarUrl.size() <= 500
+        && data.bannerUrl is string && data.bannerUrl.size() <= 500
+        && data.backgroundUrl is string && data.backgroundUrl.size() <= 500
+        && data.accentColor is string && data.accentColor.size() == 7 && data.accentColor.matches('^#[0-9a-fA-F]{6}$')
+        && (data.cardOpacity is int || data.cardOpacity is float) && data.cardOpacity >= 10 && data.cardOpacity <= 100
+        && (data.cardBlur is int || data.cardBlur is float) && data.cardBlur >= 0 && data.cardBlur <= 24
+        && data.enterGateEnabled is bool
+        && data.enterGateText is string && data.enterGateText.size() <= 64
+        && data.audioUrl is string && data.audioUrl.size() <= 500
+        && data.audioTitle is string && data.audioTitle.size() <= 64
+        && data.effect in ['none', 'snow', 'embers', 'grid']
+        && data.linkLayout in ['cards', 'icons', 'both']
+        && data.badges is list && data.badges.size() <= 12
+        && (data.badges.size() == 0 || data.badges[0] is string)
+        && (!('hiddenBadges' in data) || (data.hiddenBadges is list && data.hiddenBadges.size() <= 12 && (data.hiddenBadges.size() == 0 || data.hiddenBadges[0] is string)))
+        && data.links is list && data.links.size() <= 25
+        && (data.links.size() == 0 || data.links[0] is map)
+        && data.views is int && data.views >= 0
+        && data.moderationStatus in ['active', 'warned', 'suspended', 'banned']
+        && data.moderationReason is string && data.moderationReason.size() <= 300
+        && data.suspendedUntil is int && data.suspendedUntil >= 0
+        && data.warningCount is int && data.warningCount >= 0
+        && data.lastWarningAckAt is int && data.lastWarningAckAt >= 0
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidHandleDoc(data) {
+      return data.keys().hasAll(['handle', 'ownerUid', 'createdAt'])
+        && data.keys().hasOnly(['handle', 'ownerUid', 'createdAt'])
+        && isValidHandle(data.handle)
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidUserPrivate(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'displayName', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidBadge(data) {
+      return data.keys().hasAll(['id', 'name', 'description', 'color', 'iconKey', 'isSystem', 'createdAt'])
+        && data.keys().hasOnly(['id', 'name', 'description', 'color', 'iconKey', 'isSystem', 'createdAt'])
+        && isValidHandle(data.id)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 32
+        && data.description is string && data.description.size() >= 1 && data.description.size() <= 160
+        && data.color is string && data.color.size() == 7 && data.color.matches('^#[0-9a-fA-F]{6}$')
+        && data.iconKey in ['crown', 'shield', 'star', 'gem', 'heart', 'bug', 'bolt', 'award']
+        && data.isSystem is bool
+        && data.createdAt is timestamp;
+    }
+
+    function isValidModerationLog(data) {
+      return data.keys().hasAll(['targetUid', 'targetHandle', 'action', 'reason', 'details', 'moderatorUid', 'createdAt'])
+        && data.keys().hasOnly(['targetUid', 'targetHandle', 'action', 'reason', 'details', 'moderatorUid', 'createdAt'])
+        && isValidId(data.targetUid)
+        && data.targetHandle is string && data.targetHandle.size() >= 2 && data.targetHandle.size() <= 24
+        && data.action in ['add_badge', 'remove_badge', 'warn', 'remove_warning', 'clear_warnings', 'suspend', 'ban', 'unban']
+        && data.reason is string && data.reason.size() <= 300
+        && data.details is string && data.details.size() <= 128
+        && isValidId(data.moderatorUid)
+        && data.createdAt is timestamp;
+    }
+
+    // 3. Profiles Collection (Public Bio Data, No PII)
+    match /profiles/{profileId} {
+      allow get: if isValidId(profileId);
+      allow list: if resource.data.moderationStatus in ['active', 'warned', 'suspended', 'banned'];
+
+      allow create: if isVerifiedUser()
+        && isValidId(profileId)
+        && profileId == request.auth.uid
+        && isValidProfile(incoming())
+        && incoming().keys().hasAll(['hiddenBadges'])
+        && incoming().ownerUid == request.auth.uid
+        && incoming().badges.size() == 0
+        && incoming().hiddenBadges.size() == 0
+        && incoming().views == 0
+        && incoming().moderationStatus == 'active'
+        && incoming().moderationReason == ''
+        && incoming().suspendedUntil == 0
+        && incoming().warningCount == 0
+        && incoming().lastWarningAckAt == 0
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && getAfter(/databases/$(database)/documents/handles/$(incoming().handle)).data.ownerUid == request.auth.uid;
+
+      allow update: if isVerifiedUser()
+        && isValidId(profileId)
+        && isValidProfile(incoming())
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && (
+          // Tier 1: Admin actions (badges, moderation)
+          (
+            isAdmin()
+            && incoming().updatedAt == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'badges', 'moderationStatus', 'moderationReason',
+              'suspendedUntil', 'warningCount', 'updatedAt'
+            ])
+          )
+          ||
+          // Tier 2a: Profile owner editing bio, links, & badge visibility (only when not banned/actively suspended)
+          (
+            existing().ownerUid == request.auth.uid
+            && isNotSuspendedOrBanned(existing())
+            && incoming().updatedAt == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'handle', 'displayName', 'bio', 'location',
+              'avatarUrl', 'bannerUrl', 'backgroundUrl', 'accentColor',
+              'cardOpacity', 'cardBlur', 'enterGateEnabled', 'enterGateText',
+              'audioUrl', 'audioTitle', 'effect', 'linkLayout',
+              'hiddenBadges', 'links', 'updatedAt'
+            ])
+            && (
+              incoming().handle == existing().handle
+              || getAfter(/databases/$(database)/documents/handles/$(incoming().handle)).data.ownerUid == request.auth.uid
+            )
+          )
+          ||
+          // Tier 2b: Profile owner acknowledging warning
+          (
+            existing().ownerUid == request.auth.uid
+            && incoming().updatedAt == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'lastWarningAckAt', 'moderationStatus', 'moderationReason', 'updatedAt'
+            ])
+            && (
+              (existing().moderationStatus == 'warned' && incoming().moderationStatus == 'active' && incoming().moderationReason == '')
+              || (incoming().moderationStatus == existing().moderationStatus && incoming().moderationReason == existing().moderationReason)
+            )
+          )
+          ||
+          // Tier 3: Signed-in verified visitor incrementing view count by 1
+          (
+            incoming().diff(existing()).affectedKeys().hasOnly(['views'])
+            && incoming().views == existing().views + 1
+          )
+        );
+
+      allow delete: if isVerifiedUser() && isValidId(profileId) && isAdmin();
+    }
+
+    // 4. Unique Handle Index
+    match /handles/{handle} {
+      allow get: if isValidHandle(handle);
+
+      allow create: if isVerifiedUser()
+        && isValidHandle(handle)
+        && isValidHandleDoc(incoming())
+        && incoming().handle == handle
+        && incoming().ownerUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && !exists(/databases/$(database)/documents/handles/$(handle));
+
+      allow delete: if isVerifiedUser()
+        && isValidHandle(handle)
+        && (existing().ownerUid == request.auth.uid || isAdmin());
+    }
+
+    // 5. Isolated Private PII
+    match /usersPrivate/{uid} {
+      allow get: if isVerifiedUser() && isValidId(uid) && (uid == request.auth.uid || isAdmin());
+
+      allow create: if isVerifiedUser()
+        && isValidId(uid)
+        && uid == request.auth.uid
+        && isValidUserPrivate(incoming())
+        && incoming().uid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && isValidId(uid)
+        && uid == request.auth.uid
+        && isValidUserPrivate(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'displayName', 'updatedAt']);
+    }
+
+    // 6. Badge Definitions Catalog
+    match /badges/{badgeId} {
+      allow get: if isValidHandle(badgeId);
+      allow list: if resource.data.id is string;
+
+      allow create: if isVerifiedUser()
+        && isValidHandle(badgeId)
+        && isAdmin()
+        && isValidBadge(incoming())
+        && incoming().id == badgeId
+        && incoming().createdAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && isValidHandle(badgeId)
+        && isAdmin()
+        && isValidBadge(incoming())
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'color', 'iconKey']);
+
+      allow delete: if isVerifiedUser()
+        && isValidHandle(badgeId)
+        && isAdmin()
+        && existing().isSystem == false;
+    }
+
+    // 7. Immutable Moderation Audit Logs
+    match /moderationLogs/{logId} {
+      allow get: if isVerifiedUser()
+        && isValidId(logId)
+        && (isAdmin() || existing().targetUid == request.auth.uid);
+
+      allow list: if isVerifiedUser()
+        && (
+          isAdmin()
+          || resource.data.moderatorUid == request.auth.uid
+          || resource.data.targetUid == request.auth.uid
+        );
+
+      allow create: if isVerifiedUser()
+        && isValidId(logId)
+        && isAdmin()
+        && isValidModerationLog(incoming())
+        && incoming().moderatorUid == request.auth.uid
+        && incoming().createdAt == request.time;
+    }
+  }
+}

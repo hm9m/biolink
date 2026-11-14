@@ -1,0 +1,349 @@
+{
+  "entities": {
+    "Profile": {
+      "title": "Profile",
+      "description": "Public comboss.lol bio profile with customization, links, badges, and moderation state.",
+      "type": "object",
+      "properties": {
+        "ownerUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the profile owner",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "handle": {
+          "type": "string",
+          "description": "Unique comboss.lol URL handle",
+          "minLength": 2,
+          "maxLength": 24,
+          "pattern": "^[a-z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Public display name",
+          "minLength": 1,
+          "maxLength": 48
+        },
+        "bio": {
+          "type": "string",
+          "description": "Profile biography text",
+          "minLength": 0,
+          "maxLength": 320
+        },
+        "location": {
+          "type": "string",
+          "description": "Optional location or status tagline",
+          "minLength": 0,
+          "maxLength": 48
+        },
+        "avatarUrl": {
+          "type": "string",
+          "description": "URL or asset path for avatar image",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "bannerUrl": {
+          "type": "string",
+          "description": "URL or asset path for profile banner",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "backgroundUrl": {
+          "type": "string",
+          "description": "URL or asset path for full-page backdrop",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "accentColor": {
+          "type": "string",
+          "description": "Hex accent color for bio card",
+          "minLength": 7,
+          "maxLength": 7,
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "cardOpacity": {
+          "type": "number",
+          "description": "Bio card background opacity percentage (10-100)"
+        },
+        "cardBlur": {
+          "type": "number",
+          "description": "Bio card backdrop blur radius in pixels (0-24)"
+        },
+        "enterGateEnabled": {
+          "type": "boolean",
+          "description": "Whether the click-to-enter splash gate is active"
+        },
+        "enterGateText": {
+          "type": "string",
+          "description": "Prompt text displayed on the click-to-enter overlay",
+          "minLength": 0,
+          "maxLength": 64
+        },
+        "audioUrl": {
+          "type": "string",
+          "description": "Ambient audio track URL or built-in synth preset ID",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "audioTitle": {
+          "type": "string",
+          "description": "Display title for ambient audio track",
+          "minLength": 0,
+          "maxLength": 64
+        },
+        "effect": {
+          "type": "string",
+          "description": "Atmospheric overlay effect",
+          "enum": ["none", "snow", "embers", "grid"]
+        },
+        "linkLayout": {
+          "type": "string",
+          "description": "Presentation mode for bio links",
+          "enum": ["cards", "icons", "both"]
+        },
+        "badges": {
+          "type": "array",
+          "description": "Admin-assigned badge IDs displayed on the profile"
+        },
+        "hiddenBadges": {
+          "type": "array",
+          "description": "Badge IDs chosen by the profile owner to hide from public view"
+        },
+        "links": {
+          "type": "array",
+          "description": "Ordered list of bio link objects"
+        },
+        "views": {
+          "type": "number",
+          "description": "Total profile view count"
+        },
+        "moderationStatus": {
+          "type": "string",
+          "description": "Account moderation status managed by admins",
+          "enum": ["active", "warned", "suspended", "banned"]
+        },
+        "moderationReason": {
+          "type": "string",
+          "description": "Reason for warning, suspension, or ban",
+          "minLength": 0,
+          "maxLength": 300
+        },
+        "suspendedUntil": {
+          "type": "number",
+          "description": "Epoch milliseconds when suspension expires (0 if inactive)"
+        },
+        "warningCount": {
+          "type": "number",
+          "description": "Cumulative warning count"
+        },
+        "lastWarningAckAt": {
+          "type": "number",
+          "description": "Epoch milliseconds when user last acknowledged a warning"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last update timestamp"
+        }
+      },
+      "required": [
+        "ownerUid",
+        "handle",
+        "displayName",
+        "bio",
+        "location",
+        "avatarUrl",
+        "bannerUrl",
+        "backgroundUrl",
+        "accentColor",
+        "cardOpacity",
+        "cardBlur",
+        "enterGateEnabled",
+        "enterGateText",
+        "audioUrl",
+        "audioTitle",
+        "effect",
+        "linkLayout",
+        "badges",
+        "links",
+        "views",
+        "moderationStatus",
+        "moderationReason",
+        "suspendedUntil",
+        "warningCount",
+        "lastWarningAckAt",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "HandleReservation": {
+      "title": "HandleReservation",
+      "description": "Unique handle index mapping lowercase handle to owner UID.",
+      "type": "object",
+      "properties": {
+        "handle": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 24,
+          "pattern": "^[a-z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["handle", "ownerUid", "createdAt"]
+    },
+    "UserPrivate": {
+      "title": "UserPrivate",
+      "description": "Private PII and account metadata isolated from public profiles.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "displayName", "createdAt", "updatedAt"]
+    },
+    "BadgeDefinition": {
+      "title": "BadgeDefinition",
+      "description": "Badge catalog entry (core or custom admin-created badge).",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^[a-z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "color": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 7,
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "iconKey": {
+          "type": "string",
+          "enum": ["crown", "shield", "star", "gem", "heart", "bug", "bolt", "award"]
+        },
+        "isSystem": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "name", "description", "color", "iconKey", "isSystem", "createdAt"]
+    },
+    "ModerationLog": {
+      "title": "ModerationLog",
+      "description": "Immutable audit log for badge grants, warnings, suspensions, and bans.",
+      "type": "object",
+      "properties": {
+        "targetUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "targetHandle": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 24
+        },
+        "action": {
+          "type": "string",
+          "enum": ["add_badge", "remove_badge", "warn", "remove_warning", "clear_warnings", "suspend", "ban", "unban"]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 300
+        },
+        "details": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 128
+        },
+        "moderatorUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["targetUid", "targetHandle", "action", "reason", "details", "moderatorUid", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/profiles/{profileId}": {
+      "schema": { "$ref": "#/entities/Profile" },
+      "description": "Public user bio profiles keyed by ownerUid"
+    },
+    "/handles/{handle}": {
+      "schema": { "$ref": "#/entities/HandleReservation" },
+      "description": "Unique handle reservation records"
+    },
+    "/usersPrivate/{uid}": {
+      "schema": { "$ref": "#/entities/UserPrivate" },
+      "description": "Private PII isolated to account owner and admins"
+    },
+    "/badges/{badgeId}": {
+      "schema": { "$ref": "#/entities/BadgeDefinition" },
+      "description": "Badge catalog definitions"
+    },
+    "/moderationLogs/{logId}": {
+      "schema": { "$ref": "#/entities/ModerationLog" },
+      "description": "Immutable admin moderation audit trail"
+    }
+  }
+}
