@@ -2,9 +2,12 @@ import React, { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   Ban,
+  Check,
   CheckCircle2,
   Coins,
+  Copy,
   ExternalLink,
+  KeyRound,
   Plus,
   Search,
   Trash2,
@@ -21,6 +24,7 @@ import {
   deleteCustomBadge,
   sanitizeHandle,
   subscribeAllProfilesAdmin,
+  subscribeAllUsersPrivateAdmin,
   subscribeModerationLogs,
 } from '@/src/lib/firestoreService';
 import type {
@@ -29,6 +33,7 @@ import type {
   ModerationLog,
   ModerationStatus,
   Profile,
+  UserPrivateRecord,
 } from '@/src/types/comboss';
 import type { User } from 'firebase/auth';
 
@@ -48,6 +53,8 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [logs, setLogs] = useState<ModerationLog[]>([]);
+  const [usersPrivateByUid, setUsersPrivateByUid] = useState<Record<string, UserPrivateRecord>>({});
+  const [copiedRecoveryUid, setCopiedRecoveryUid] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | ModerationStatus>('all');
@@ -77,22 +84,28 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
   useEffect(() => {
     const unsubProfiles = subscribeAllProfilesAdmin(setProfiles);
     const unsubLogs = subscribeModerationLogs(setLogs);
+    const unsubPrivate = subscribeAllUsersPrivateAdmin(setUsersPrivateByUid);
     return () => {
       unsubProfiles();
       unsubLogs();
+      unsubPrivate();
     };
   }, []);
 
   const selectedProfile = profiles.find((p) => p.ownerUid === selectedUid) || null;
+  const selectedPrivate = selectedProfile ? usersPrivateByUid[selectedProfile.ownerUid] : undefined;
 
   const filteredProfiles = profiles.filter((p) => {
     if (statusFilter !== 'all' && p.moderationStatus !== statusFilter) return false;
     const q = searchQuery.trim().toLowerCase();
     if (!q) return true;
+    const priv = usersPrivateByUid[p.ownerUid];
     return (
       p.handle.toLowerCase().includes(q) ||
       p.displayName.toLowerCase().includes(q) ||
-      p.ownerUid.toLowerCase().includes(q)
+      p.ownerUid.toLowerCase().includes(q) ||
+      Boolean(priv?.recoveryId?.toLowerCase().includes(q)) ||
+      Boolean(priv?.email?.toLowerCase().includes(q))
     );
   });
 
@@ -304,7 +317,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search @handle, name, or UID..."
+                placeholder="Search @handle, name, UID, email, or recovery ID..."
                 className="w-full bg-transparent text-sm text-white placeholder:text-zinc-500 focus:outline-none"
               />
             </div>
@@ -332,6 +345,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
               <thead className="border-b border-white/10 bg-[#090B0F] text-xs text-zinc-400">
                 <tr>
                   <th className="px-4 py-3 font-medium">User</th>
+                  <th className="px-4 py-3 font-medium">Recovery ID</th>
                   <th className="px-4 py-3 font-medium">Badges</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 text-right font-medium">Warnings</th>
@@ -342,12 +356,14 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
               <tbody className="divide-y divide-white/10">
                 {filteredProfiles.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-sm text-zinc-500">
+                    <td colSpan={7} className="px-4 py-10 text-center text-sm text-zinc-500">
                       No profiles found.
                     </td>
                   </tr>
                 ) : (
-                  filteredProfiles.map((prof) => (
+                  filteredProfiles.map((prof) => {
+                    const priv = usersPrivateByUid[prof.ownerUid];
+                    return (
                     <tr key={prof.ownerUid} className="hover:bg-white/[0.02]">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
@@ -368,6 +384,30 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                             </div>
                           </div>
                         </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {priv?.recoveryId ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void navigator.clipboard.writeText(priv.recoveryId).then(() => {
+                                setCopiedRecoveryUid(prof.ownerUid);
+                                window.setTimeout(() => setCopiedRecoveryUid(null), 1800);
+                              });
+                            }}
+                            title="Copy Recovery ID"
+                            className="inline-flex items-center gap-1.5 rounded border border-white/10 bg-[#07080A] px-2 py-1 font-mono text-xs text-zinc-200 hover:border-white/25 hover:text-white cursor-pointer"
+                          >
+                            {priv.recoveryId}
+                            {copiedRecoveryUid === prof.ownerUid ? (
+                              <Check size={11} className="text-emerald-400" />
+                            ) : (
+                              <Copy size={11} className="text-zinc-500" />
+                            )}
+                          </button>
+                        ) : (
+                          <span className="font-mono text-xs text-zinc-600">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
@@ -430,7 +470,8 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                         </div>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -767,6 +808,53 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                 {actionFeedback}
               </div>
             )}
+
+            {/* Account & Recovery Details */}
+            <div className="mt-5 grid gap-3 rounded-xl border border-white/10 bg-[#07080A] p-4 sm:grid-cols-2">
+              <div>
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                  <KeyRound size={12} />
+                  Recovery ID
+                </div>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="font-mono text-xs font-semibold text-white">
+                    {selectedPrivate?.recoveryId || 'Not yet synced'}
+                  </span>
+                  {selectedPrivate?.recoveryId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard
+                          .writeText(selectedPrivate.recoveryId)
+                          .then(() => {
+                            setCopiedRecoveryUid(selectedProfile.ownerUid);
+                            window.setTimeout(() => setCopiedRecoveryUid(null), 1800);
+                          });
+                      }}
+                      className="inline-flex items-center gap-1 rounded border border-white/15 px-1.5 py-0.5 text-[10px] text-zinc-300 hover:text-white cursor-pointer"
+                    >
+                      {copiedRecoveryUid === selectedProfile.ownerUid ? (
+                        <Check size={10} className="text-emerald-400" />
+                      ) : (
+                        <Copy size={10} />
+                      )}
+                      {copiedRecoveryUid === selectedProfile.ownerUid ? 'Copied' : 'Copy'}
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                  Account Email / UID
+                </div>
+                <div className="mt-1 truncate font-mono text-xs text-zinc-200">
+                  {selectedPrivate?.email || '—'}
+                </div>
+                <div className="truncate font-mono text-[11px] text-zinc-500">
+                  {selectedProfile.ownerUid}
+                </div>
+              </div>
+            </div>
 
             {/* Badges Assignment */}
             <div className="mt-6">

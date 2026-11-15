@@ -13,6 +13,7 @@ export const RESERVED_HANDLES = [
   'directory',
   'api',
   'settings',
+  'forgot-password',
 ];
 
 export const HANDLE_REGEX = /^[a-z0-9_-]{2,24}$/;
@@ -158,8 +159,8 @@ export const SHOWCASE_PROFILE: Profile = {
       id: 'lnk-1',
       platform: 'discord',
       title: 'Discord Server',
-      subtitle: 'discord.gg/hightier',
-      url: 'https://discord.com',
+      subtitle: 'discord.gg/GP5JHNd6x',
+      url: 'https://discord.gg/GP5JHNd6x',
       iconUrl: '',
       visible: true,
     },

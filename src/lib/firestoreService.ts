@@ -45,7 +45,23 @@ import type {
   ModerationAction,
   ModerationLog,
   Profile,
+  UserPrivateRecord,
 } from '@/src/types/comboss';
+
+const RECOVERY_CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+export function generateRecoveryId(): string {
+  const bytes = new Uint8Array(12);
+  if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i++) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  const chars = Array.from(bytes, (b) => RECOVERY_CHARSET[b % RECOVERY_CHARSET.length]).join('');
+  return `HT-${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8, 12)}`;
+}
 
 function clampStr(val: string, max: number): string {
   return (val || '').trim().slice(0, max);
@@ -119,19 +135,62 @@ export async function syncPrivateUser(user: User): Promise<void> {
         uid: user.uid,
         email,
         displayName,
+        recoveryId: generateRecoveryId(),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
     } else {
-      await updateDoc(ref, {
+      const existingData = snap.data() as Partial<UserPrivateRecord>;
+      const patch: Record<string, unknown> = {
         email,
         displayName,
         updatedAt: serverTimestamp(),
-      });
+      };
+      if (typeof existingData.recoveryId !== 'string' || !existingData.recoveryId) {
+        patch.recoveryId = generateRecoveryId();
+      }
+      await updateDoc(ref, patch);
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
+}
+
+export function subscribeOwnPrivateUser(
+  uid: string,
+  onData: (record: UserPrivateRecord | null) => void
+): Unsubscribe {
+  const path = `usersPrivate/${uid}`;
+  return onSnapshot(
+    doc(db, 'usersPrivate', uid),
+    (snap) => {
+      onData(snap.exists() ? (snap.data() as UserPrivateRecord) : null);
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.GET, path);
+    }
+  );
+}
+
+export function subscribeAllUsersPrivateAdmin(
+  onData: (recordsByUid: Record<string, UserPrivateRecord>) => void
+): Unsubscribe {
+  const path = 'usersPrivate';
+  const q = query(collection(db, 'usersPrivate'), where('uid', '>=', ''), limit(100));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const map: Record<string, UserPrivateRecord> = {};
+      for (const d of snap.docs) {
+        const rec = d.data() as UserPrivateRecord;
+        map[rec.uid || d.id] = rec;
+      }
+      onData(map);
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, path);
+    }
+  );
 }
 
 export function checkIsAdmin(user: User | null): boolean {
@@ -803,8 +862,8 @@ export async function openCrateGamble(
     }
   }
 
-  const creditsDelta = creditsEarned - crate.cost;
-  const nextCredits = Math.max(0, currentCredits + creditsDelta);
+  const creditsDelta = Math.round(creditsEarned - crate.cost);
+  const nextCredits = Math.max(0, Math.round(currentCredits) + creditsDelta);
 
   const profilePath = `profiles/${profile.ownerUid}`;
   try {

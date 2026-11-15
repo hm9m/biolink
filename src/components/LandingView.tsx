@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowRight, Check, ShieldAlert } from 'lucide-react';
 import { BioCard } from '@/src/components/BioCard';
-import { BadgeGlyph } from '@/src/components/BrandIcons';
-import { CORE_BADGES, SHOWCASE_PROFILE } from '@/src/lib/constants';
+import { SHOWCASE_PROFILE } from '@/src/lib/constants';
 import { isHandleAvailable, isHandleValid, sanitizeHandle } from '@/src/lib/firestoreService';
 import type { BadgeDefinition, LinkLayout, Profile } from '@/src/types/comboss';
 
@@ -132,7 +131,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
                       ? hasOwnProfile
                         ? 'Your dashboard is ready to customize links and appearance.'
                         : 'Enter a handle to create your profile.'
-                      : 'Sign in with Google to claim your handle in seconds.'}
+                      : 'Sign in with email or Google to claim your handle in seconds.'}
                   </span>
                 )}
               </div>
@@ -175,45 +174,6 @@ export const LandingView: React.FC<LandingViewProps> = ({
               </button>
             </div>
             <BioCard profile={showcaseCardProfile} badgeCatalog={badgeCatalog} compact />
-          </div>
-        </div>
-      </section>
-
-      {/* Official Badges Section */}
-      <section id="badges" className="border-t border-white/10 bg-[#090B0F] py-20">
-        <div className="mx-auto max-w-[1200px] px-6">
-          <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-            <div>
-              <h2 className="font-display text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-                Official Profile Badges
-              </h2>
-              <p className="mt-2 max-w-xl text-sm text-zinc-400">
-                Badges are verified and assigned exclusively through the hightier.lol moderation
-                panel. Hover any glyph on a profile to inspect its title.
-              </p>
-            </div>
-            <span className="font-mono text-xs text-zinc-500">
-              {badgeCatalog.length} Active Definitions
-            </span>
-          </div>
-
-          <div className="mt-10 grid gap-px overflow-hidden rounded-xl border border-white/10 bg-white/10 sm:grid-cols-2 lg:grid-cols-3">
-            {CORE_BADGES.map((badge) => (
-              <div key={badge.id} className="bg-[#0B0D12] p-6">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-[#12151E]">
-                    <BadgeGlyph iconKey={badge.iconKey} color={badge.color} size={18} />
-                  </div>
-                  <div>
-                    <h3 className="font-display text-base font-semibold text-white">
-                      {badge.name}
-                    </h3>
-                    <span className="font-mono text-xs text-zinc-500">{badge.id}</span>
-                  </div>
-                </div>
-                <p className="mt-3 text-sm leading-relaxed text-zinc-400">{badge.description}</p>
-              </div>
-            ))}
           </div>
         </div>
       </section>

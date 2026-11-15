@@ -10,6 +10,7 @@ import {
   Eye,
   EyeOff,
   ImagePlus,
+  KeyRound,
   Plus,
   Save,
   Trash2,
@@ -32,6 +33,7 @@ import {
   isHandleAvailable,
   isHandleValid,
   sanitizeHandle,
+  subscribeOwnPrivateUser,
   updateOwnProfile,
 } from '@/src/lib/firestoreService';
 import type {
@@ -40,6 +42,7 @@ import type {
   LinkLayout,
   PlatformId,
   Profile,
+  UserPrivateRecord,
   VisualEffect,
 } from '@/src/types/comboss';
 import type { User } from 'firebase/auth';
@@ -54,7 +57,7 @@ interface DashboardViewProps {
   onOpenBio: (handle: string) => void;
 }
 
-type StudioTab = 'profile' | 'links' | 'appearance' | 'badges' | 'crates';
+type StudioTab = 'profile' | 'links' | 'appearance' | 'badges' | 'crates' | 'settings';
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   user,
@@ -111,6 +114,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [saveError, setSaveError] = useState('');
   const [copied, setCopied] = useState(false);
   const [ackBusy, setAckBusy] = useState(false);
+  const [privateUser, setPrivateUser] = useState<UserPrivateRecord | null>(null);
+  const [hideRecoveryId, setHideRecoveryId] = useState(false);
+  const [copiedRecoveryId, setCopiedRecoveryId] = useState(false);
+
+  useEffect(() => {
+    const unsub = subscribeOwnPrivateUser(user.uid, setPrivateUser);
+    return () => unsub();
+  }, [user.uid]);
 
   useEffect(() => {
     if (!profile) return;
@@ -218,6 +229,36 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {claiming ? 'Creating Profile...' : 'Create Bio Profile'}
             </button>
           </form>
+
+          {privateUser?.recoveryId && (
+            <div className="mt-6 rounded-lg border border-white/10 bg-[#07080A] p-4">
+              <div className="flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-300">
+                  <KeyRound size={13} className="text-zinc-400" />
+                  Your Recovery ID
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(privateUser.recoveryId).then(() => {
+                      setCopiedRecoveryId(true);
+                      window.setTimeout(() => setCopiedRecoveryId(false), 2000);
+                    });
+                  }}
+                  className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-white cursor-pointer"
+                >
+                  {copiedRecoveryId ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                  {copiedRecoveryId ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+              <div className="mt-1.5 font-mono text-sm font-semibold tracking-wider text-white">
+                {privateUser.recoveryId}
+              </div>
+              <p className="mt-1 text-[11px] text-zinc-500">
+                Save this ID — you can also view it anytime in Dashboard Settings.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -499,6 +540,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 { id: 'appearance', label: 'Appearance & Audio' },
                 { id: 'badges', label: `Badges (${profile.badges.length})` },
                 { id: 'crates', label: 'Crates & Frames' },
+                { id: 'settings', label: 'Settings' },
               ] as { id: StudioTab; label: string }[]
             ).map((tab) => (
               <button
@@ -1275,6 +1317,93 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 }
               }}
             />
+          )}
+
+          {activeTab === 'settings' && (
+            <div className="space-y-6 rounded-xl border border-white/10 bg-[#0B0D12] p-6">
+              <div>
+                <h2 className="font-display text-base font-semibold text-white">
+                  Account & Recovery Settings
+                </h2>
+                <p className="mt-1 text-xs text-zinc-400">
+                  Private account details visible only to you and hightier.lol administrators.
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-white/12 bg-[#07080A] p-5">
+                <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[#12151E] text-white">
+                      <KeyRound size={16} />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-white">Account Recovery ID</div>
+                      <div className="text-xs text-zinc-400">
+                        Unique identifier assigned upon signup for account recovery support.
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setHideRecoveryId((v) => !v)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-[#0B0D12] px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-white/30 hover:text-white cursor-pointer"
+                    >
+                      {hideRecoveryId ? <Eye size={13} /> : <EyeOff size={13} />}
+                      {hideRecoveryId ? 'Reveal' : 'Hide'}
+                    </button>
+                    {privateUser?.recoveryId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void navigator.clipboard
+                            .writeText(privateUser.recoveryId)
+                            .then(() => {
+                              setCopiedRecoveryId(true);
+                              window.setTimeout(() => setCopiedRecoveryId(false), 2000);
+                            });
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-[#07080A] hover:bg-zinc-200 cursor-pointer"
+                      >
+                        {copiedRecoveryId ? (
+                          <Check size={13} className="text-emerald-600" />
+                        ) : (
+                          <Copy size={13} />
+                        )}
+                        {copiedRecoveryId ? 'Copied' : 'Copy ID'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-lg border border-white/10 bg-[#0B0D12] px-4 py-3 font-mono text-base font-semibold tracking-widest text-white select-all">
+                  {privateUser?.recoveryId
+                    ? hideRecoveryId
+                      ? 'HT-••••-••••-••••'
+                      : privateUser.recoveryId
+                    : 'Generating recovery ID...'}
+                </div>
+
+                <p className="mt-3 text-xs leading-relaxed text-zinc-400">
+                  Keep this Recovery ID private. If you forget your password or lose access to your
+                  account, join our Discord and provide this ID so an administrator can verify your
+                  identity.
+                </p>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-lg border border-white/10 bg-[#07080A] p-4">
+                  <div className="text-xs font-medium text-zinc-400">Account Email</div>
+                  <div className="mt-1 truncate font-mono text-xs text-white">
+                    {privateUser?.email || user.email || '—'}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-[#07080A] p-4">
+                  <div className="text-xs font-medium text-zinc-400">User UID</div>
+                  <div className="mt-1 truncate font-mono text-xs text-zinc-300">{user.uid}</div>
+                </div>
+              </div>
+            </div>
           )}
         </div>
 

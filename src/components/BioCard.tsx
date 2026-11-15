@@ -39,10 +39,19 @@ export const BioCard: React.FC<BioCardProps> = ({
   for (const b of badgeCatalog) badgeMap.set(b.id, b);
 
   const hiddenSet = new Set(profile.hiddenBadges || []);
-  const activeBadges = profile.badges
+  const activeBadges: BadgeDefinition[] = profile.badges
     .filter((id) => !hiddenSet.has(id))
-    .map((id) => badgeMap.get(id))
-    .filter((b): b is BadgeDefinition => Boolean(b));
+    .map(
+      (id) =>
+        badgeMap.get(id) || {
+          id,
+          name: id,
+          description: 'Custom profile badge',
+          color: '#93C5FD',
+          iconKey: 'award' as const,
+          isSystem: false,
+        }
+    );
 
   const visibleLinks = profile.links.filter((l) => l.visible);
   const now = Date.now();

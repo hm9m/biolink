@@ -3,7 +3,9 @@ import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebas
 import { doc, onSnapshot } from 'firebase/firestore';
 import { Shield } from 'lucide-react';
 import { AdminPanelView } from '@/src/components/AdminPanelView';
+import { AuthPanel, ForgotPasswordView } from '@/src/components/AuthPanel';
 import { BioView } from '@/src/components/BioView';
+import { PlatformLogo } from '@/src/components/BrandIcons';
 import { DashboardView } from '@/src/components/DashboardView';
 import { LandingView } from '@/src/components/LandingView';
 import { CORE_BADGES, SHOWCASE_PROFILE } from '@/src/lib/constants';
@@ -21,6 +23,7 @@ type RouteState =
   | { view: 'home' }
   | { view: 'dashboard' }
   | { view: 'admin' }
+  | { view: 'forgot-password' }
   | { view: 'bio'; handle: string };
 
 function parsePath(pathname: string): RouteState {
@@ -28,6 +31,7 @@ function parsePath(pathname: string): RouteState {
   if (!clean) return { view: 'home' };
   if (clean === 'dashboard') return { view: 'dashboard' };
   if (clean === 'admin') return { view: 'admin' };
+  if (clean === 'forgot-password') return { view: 'forgot-password' };
   return { view: 'bio', handle: sanitizeHandle(clean) || 'hightier' };
 }
 
@@ -70,6 +74,7 @@ export default function App() {
   const [route, setRoute] = useState<RouteState>(() => parsePath(window.location.pathname));
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
   const [ownProfile, setOwnProfile] = useState<Profile | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -104,6 +109,7 @@ export default function App() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (nextUser) => {
       setUser(nextUser);
+      setEmailVerified(Boolean(nextUser?.emailVerified));
       setAuthReady(true);
       if (nextUser && nextUser.emailVerified) {
         try {
@@ -183,7 +189,7 @@ export default function App() {
     };
   }, [route]);
 
-  const handleSignIn = async (redirectAfter = false) => {
+  const handleGoogleSignIn = async (redirectAfter = false) => {
     setAuthError('');
     try {
       await signInWithPopup(auth, googleProvider);
@@ -195,13 +201,22 @@ export default function App() {
     }
   };
 
+  const handleRefreshVerification = async () => {
+    if (!auth.currentUser) return;
+    await auth.currentUser.reload();
+    await auth.currentUser.getIdToken(true);
+    const verified = Boolean(auth.currentUser.emailVerified);
+    setUser(auth.currentUser);
+    setEmailVerified(verified);
+    if (verified) {
+      await syncPrivateUser(auth.currentUser);
+      setIsAdmin(checkIsAdmin(auth.currentUser));
+    }
+  };
+
   const handleClaimHandle = (handle: string) => {
     setPendingClaimHandle(handle);
-    if (!user) {
-      void handleSignIn(true);
-    } else {
-      navigate('/dashboard');
-    }
+    navigate('/dashboard');
   };
 
   // Full-screen Public Bio Page
@@ -279,13 +294,15 @@ export default function App() {
               >
                 Showcase
               </button>
-              <button
-                type="button"
-                onClick={() => navigate('/', 'badges')}
-                className="hover:text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              <a
+                href="https://discord.gg/GP5JHNd6x"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-zinc-300 hover:text-white transition-colors whitespace-nowrap shrink-0"
               >
-                Badges
-              </button>
+                <PlatformLogo platform="discord" size={14} />
+                Discord
+              </a>
               {isAdmin ? (
                 <button
                   type="button"
@@ -343,6 +360,15 @@ export default function App() {
           <button type="button" onClick={() => navigate('/')} className="whitespace-nowrap hover:text-white">
             Home
           </button>
+          <a
+            href="https://discord.gg/GP5JHNd6x"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 whitespace-nowrap text-zinc-300 hover:text-white"
+          >
+            <PlatformLogo platform="discord" size={12} />
+            Discord
+          </a>
           <button type="button" onClick={() => navigate('/hightier')} className="whitespace-nowrap hover:text-white">
             Demo Bio
           </button>
@@ -377,7 +403,7 @@ export default function App() {
             hasOwnProfile={Boolean(ownProfile)}
             onClaimHandle={handleClaimHandle}
             onOpenBio={(h) => navigate(`/${h}`)}
-            onSignIn={() => void handleSignIn(true)}
+            onSignIn={() => navigate('/dashboard')}
             onGoDashboard={() => navigate('/dashboard')}
           />
         )}
@@ -388,25 +414,15 @@ export default function App() {
               <div className="py-24 text-center font-mono text-xs text-zinc-400">
                 Initializing session...
               </div>
-            ) : !user ? (
-              <div className="mx-auto max-w-md px-6 py-24 text-center">
-                <div className="rounded-xl border border-white/12 bg-[#0B0D12] p-8">
-                  <h1 className="font-display text-2xl font-semibold text-white">
-                    Sign in to hightier.lol
-                  </h1>
-                  <p className="mt-2 text-sm text-zinc-400">
-                    Authenticate with Google to create your bio page, customize links, and manage
-                    your profile.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => void handleSignIn(false)}
-                    className="mt-6 w-full rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-[#07080A] hover:bg-zinc-200 cursor-pointer"
-                  >
-                    Continue with Google
-                  </button>
-                </div>
-              </div>
+            ) : !user || !emailVerified ? (
+              <AuthPanel
+                user={user}
+                emailVerified={emailVerified}
+                pendingClaimHandle={pendingClaimHandle}
+                onGoogleSignIn={() => handleGoogleSignIn(false)}
+                onVerificationRefreshed={handleRefreshVerification}
+                onForgotPassword={() => navigate('/forgot-password')}
+              />
             ) : (
               <DashboardView
                 user={user}
@@ -419,6 +435,10 @@ export default function App() {
               />
             )}
           </>
+        )}
+
+        {route.view === 'forgot-password' && (
+          <ForgotPasswordView onBackToSignIn={() => navigate('/dashboard')} />
         )}
 
         {route.view === 'admin' && (

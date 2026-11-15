@@ -161,3 +161,12 @@ export interface ModerationLog {
   moderatorUid: string;
   createdAt?: Timestamp | null;
 }
+
+export interface UserPrivateRecord {
+  uid: string;
+  email: string;
+  displayName: string;
+  recoveryId: string;
+  createdAt?: Timestamp | null;
+  updatedAt?: Timestamp | null;
+}

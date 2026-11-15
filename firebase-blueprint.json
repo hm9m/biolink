@@ -254,6 +254,13 @@
           "minLength": 1,
           "maxLength": 80
         },
+        "recoveryId": {
+          "type": "string",
+          "description": "Immutable account recovery identifier generated on signup",
+          "minLength": 6,
+          "maxLength": 32,
+          "pattern": "^HT-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$"
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time"
@@ -263,7 +270,7 @@
           "format": "date-time"
         }
       },
-      "required": ["uid", "email", "displayName", "createdAt", "updatedAt"]
+      "required": ["uid", "email", "displayName", "recoveryId", "createdAt", "updatedAt"]
     },
     "BadgeDefinition": {
       "title": "BadgeDefinition",
