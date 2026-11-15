@@ -28,7 +28,7 @@ function parsePath(pathname: string): RouteState {
   if (!clean) return { view: 'home' };
   if (clean === 'dashboard') return { view: 'dashboard' };
   if (clean === 'admin') return { view: 'admin' };
-  return { view: 'bio', handle: sanitizeHandle(clean) || 'comboss' };
+  return { view: 'bio', handle: sanitizeHandle(clean) || 'hightier' };
 }
 
 class ErrorBoundary extends React.Component<
@@ -157,7 +157,7 @@ export default function App() {
         if (found) {
           setBioProfile(found);
           setBioNotFound(false);
-        } else if (route.handle === 'comboss') {
+        } else if (route.handle === 'hightier') {
           setBioProfile(SHOWCASE_PROFILE);
           setBioNotFound(false);
         } else {
@@ -167,7 +167,7 @@ export default function App() {
       })
       .catch(() => {
         if (cancelled) return;
-        if (route.handle === 'comboss') {
+        if (route.handle === 'hightier') {
           setBioProfile(SHOWCASE_PROFILE);
           setBioNotFound(false);
         } else {
@@ -209,7 +209,7 @@ export default function App() {
     if (bioLoading) {
       return (
         <div className="flex min-h-screen items-center justify-center bg-[#07080A] font-mono text-xs text-zinc-400">
-          Loading comboss.lol/{route.handle}...
+          Loading hightier.lol/{route.handle}...
         </div>
       );
     }
@@ -221,7 +221,7 @@ export default function App() {
             @{route.handle} is unclaimed
           </h1>
           <p className="mt-2 max-w-sm text-sm text-zinc-400">
-            No bio profile exists at comboss.lol/{route.handle} yet.
+            No bio profile exists at hightier.lol/{route.handle} yet.
           </p>
           <div className="mt-6 flex items-center gap-3">
             <button
@@ -267,7 +267,7 @@ export default function App() {
               onClick={() => navigate('/')}
               className="font-display text-lg font-semibold tracking-tight text-white whitespace-nowrap shrink-0 cursor-pointer"
             >
-              comboss.lol
+              hightier.lol
             </button>
 
             {/* Zone 2: 4–5 concise single-line nav links */}
@@ -300,7 +300,7 @@ export default function App() {
               ) : (
                 <button
                   type="button"
-                  onClick={() => navigate('/comboss')}
+                  onClick={() => navigate('/hightier')}
                   className="hover:text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   Demo Bio
@@ -343,7 +343,7 @@ export default function App() {
           <button type="button" onClick={() => navigate('/')} className="whitespace-nowrap hover:text-white">
             Home
           </button>
-          <button type="button" onClick={() => navigate('/comboss')} className="whitespace-nowrap hover:text-white">
+          <button type="button" onClick={() => navigate('/hightier')} className="whitespace-nowrap hover:text-white">
             Demo Bio
           </button>
           <button type="button" onClick={() => navigate('/dashboard')} className="whitespace-nowrap hover:text-white">
@@ -392,7 +392,7 @@ export default function App() {
               <div className="mx-auto max-w-md px-6 py-24 text-center">
                 <div className="rounded-xl border border-white/12 bg-[#0B0D12] p-8">
                   <h1 className="font-display text-2xl font-semibold text-white">
-                    Sign in to comboss.lol
+                    Sign in to hightier.lol
                   </h1>
                   <p className="mt-2 text-sm text-zinc-400">
                     Authenticate with Google to create your bio page, customize links, and manage
@@ -434,7 +434,7 @@ export default function App() {
                     Staff Access Required
                   </h1>
                   <p className="mt-2 text-sm text-zinc-400">
-                    The Admin Panel is restricted to verified comboss.lol owners and staff
+                    The Admin Panel is restricted to verified hightier.lol owners and staff
                     moderators.
                   </p>
                   <button

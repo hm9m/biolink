@@ -61,8 +61,11 @@ service cloud.firestore {
           'ownerUid', 'handle', 'displayName', 'bio', 'location',
           'avatarUrl', 'bannerUrl', 'backgroundUrl', 'accentColor',
           'cardOpacity', 'cardBlur', 'enterGateEnabled', 'enterGateText',
-          'audioUrl', 'audioTitle', 'effect', 'linkLayout',
-          'badges', 'hiddenBadges', 'links', 'views', 'moderationStatus',
+          'audioUrl', 'audioTitle', 'audioAutoplay', 'audioVolume',
+          'effect', 'linkLayout',
+          'badges', 'hiddenBadges',
+          'credits', 'lastDailyClaimAt', 'unlockedFrames', 'equippedFrame',
+          'links', 'views', 'moderationStatus',
           'moderationReason', 'suspendedUntil', 'warningCount',
           'lastWarningAckAt', 'createdAt', 'updatedAt'
         ])
@@ -71,9 +74,9 @@ service cloud.firestore {
         && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 48
         && data.bio is string && data.bio.size() <= 320
         && data.location is string && data.location.size() <= 48
-        && data.avatarUrl is string && data.avatarUrl.size() <= 500
-        && data.bannerUrl is string && data.bannerUrl.size() <= 500
-        && data.backgroundUrl is string && data.backgroundUrl.size() <= 500
+        && data.avatarUrl is string && data.avatarUrl.size() <= 80000
+        && data.bannerUrl is string && data.bannerUrl.size() <= 140000
+        && data.backgroundUrl is string && data.backgroundUrl.size() <= 200000
         && data.accentColor is string && data.accentColor.size() == 7 && data.accentColor.matches('^#[0-9a-fA-F]{6}$')
         && (data.cardOpacity is int || data.cardOpacity is float) && data.cardOpacity >= 10 && data.cardOpacity <= 100
         && (data.cardBlur is int || data.cardBlur is float) && data.cardBlur >= 0 && data.cardBlur <= 24
@@ -81,11 +84,17 @@ service cloud.firestore {
         && data.enterGateText is string && data.enterGateText.size() <= 64
         && data.audioUrl is string && data.audioUrl.size() <= 500
         && data.audioTitle is string && data.audioTitle.size() <= 64
+        && (!('audioAutoplay' in data) || data.audioAutoplay is bool)
+        && (!('audioVolume' in data) || ((data.audioVolume is int || data.audioVolume is float) && data.audioVolume >= 0 && data.audioVolume <= 100))
         && data.effect in ['none', 'snow', 'embers', 'grid']
         && data.linkLayout in ['cards', 'icons', 'both']
         && data.badges is list && data.badges.size() <= 12
         && (data.badges.size() == 0 || data.badges[0] is string)
         && (!('hiddenBadges' in data) || (data.hiddenBadges is list && data.hiddenBadges.size() <= 12 && (data.hiddenBadges.size() == 0 || data.hiddenBadges[0] is string)))
+        && (!('credits' in data) || (data.credits is int && data.credits >= 0 && data.credits <= 10000000))
+        && (!('lastDailyClaimAt' in data) || (data.lastDailyClaimAt is int && data.lastDailyClaimAt >= 0))
+        && (!('unlockedFrames' in data) || (data.unlockedFrames is list && data.unlockedFrames.size() <= 24 && (data.unlockedFrames.size() == 0 || data.unlockedFrames[0] is string)))
+        && (!('equippedFrame' in data) || (data.equippedFrame is string && data.equippedFrame.size() <= 32 && (data.equippedFrame == '' || ('unlockedFrames' in data && data.equippedFrame in data.unlockedFrames))))
         && data.links is list && data.links.size() <= 25
         && (data.links.size() == 0 || data.links[0] is map)
         && data.views is int && data.views >= 0
@@ -133,10 +142,24 @@ service cloud.firestore {
         && data.keys().hasOnly(['targetUid', 'targetHandle', 'action', 'reason', 'details', 'moderatorUid', 'createdAt'])
         && isValidId(data.targetUid)
         && data.targetHandle is string && data.targetHandle.size() >= 2 && data.targetHandle.size() <= 24
-        && data.action in ['add_badge', 'remove_badge', 'warn', 'remove_warning', 'clear_warnings', 'suspend', 'ban', 'unban']
+        && data.action in ['add_badge', 'remove_badge', 'warn', 'remove_warning', 'clear_warnings', 'suspend', 'ban', 'unban', 'grant_credits']
         && data.reason is string && data.reason.size() <= 300
         && data.details is string && data.details.size() <= 128
         && isValidId(data.moderatorUid)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidCrateRoll(data) {
+      return data.keys().hasAll(['ownerUid', 'crateId', 'cost', 'rewardType', 'rewardId', 'rewardLabel', 'rarity', 'creditsDelta', 'createdAt'])
+        && data.keys().hasOnly(['ownerUid', 'crateId', 'cost', 'rewardType', 'rewardId', 'rewardLabel', 'rarity', 'creditsDelta', 'createdAt'])
+        && isValidId(data.ownerUid)
+        && data.crateId in ['standard', 'phantom', 'sovereign']
+        && data.cost in [100, 250, 600]
+        && data.rewardType in ['frame', 'duplicate_refund', 'credits']
+        && data.rewardId is string && data.rewardId.size() >= 1 && data.rewardId.size() <= 48
+        && data.rewardLabel is string && data.rewardLabel.size() >= 1 && data.rewardLabel.size() <= 64
+        && data.rarity in ['common', 'rare', 'epic', 'legendary', 'mythic']
+        && data.creditsDelta is int && data.creditsDelta >= -600 && data.creditsDelta <= 2500
         && data.createdAt is timestamp;
     }
 
@@ -149,10 +172,17 @@ service cloud.firestore {
         && isValidId(profileId)
         && profileId == request.auth.uid
         && isValidProfile(incoming())
-        && incoming().keys().hasAll(['hiddenBadges'])
+        && incoming().keys().hasAll([
+          'hiddenBadges', 'audioAutoplay', 'audioVolume',
+          'credits', 'lastDailyClaimAt', 'unlockedFrames', 'equippedFrame'
+        ])
         && incoming().ownerUid == request.auth.uid
         && incoming().badges.size() == 0
         && incoming().hiddenBadges.size() == 0
+        && incoming().credits == 250
+        && incoming().lastDailyClaimAt == 0
+        && incoming().unlockedFrames.size() == 0
+        && incoming().equippedFrame == ''
         && incoming().views == 0
         && incoming().moderationStatus == 'active'
         && incoming().moderationReason == ''
@@ -169,17 +199,17 @@ service cloud.firestore {
         && incoming().ownerUid == existing().ownerUid
         && incoming().createdAt == existing().createdAt
         && (
-          // Tier 1: Admin actions (badges, moderation)
+          // Tier 1: Admin actions (badges, credits, moderation)
           (
             isAdmin()
             && incoming().updatedAt == request.time
             && incoming().diff(existing()).affectedKeys().hasOnly([
-              'badges', 'moderationStatus', 'moderationReason',
+              'badges', 'credits', 'moderationStatus', 'moderationReason',
               'suspendedUntil', 'warningCount', 'updatedAt'
             ])
           )
           ||
-          // Tier 2a: Profile owner editing bio, links, & badge visibility (only when not banned/actively suspended)
+          // Tier 2a: Profile owner editing bio, links, appearance, & equipping won frames
           (
             existing().ownerUid == request.auth.uid
             && isNotSuspendedOrBanned(existing())
@@ -188,8 +218,9 @@ service cloud.firestore {
               'handle', 'displayName', 'bio', 'location',
               'avatarUrl', 'bannerUrl', 'backgroundUrl', 'accentColor',
               'cardOpacity', 'cardBlur', 'enterGateEnabled', 'enterGateText',
-              'audioUrl', 'audioTitle', 'effect', 'linkLayout',
-              'hiddenBadges', 'links', 'updatedAt'
+              'audioUrl', 'audioTitle', 'audioAutoplay', 'audioVolume',
+              'effect', 'linkLayout',
+              'hiddenBadges', 'equippedFrame', 'links', 'updatedAt'
             ])
             && (
               incoming().handle == existing().handle
@@ -207,6 +238,60 @@ service cloud.firestore {
             && (
               (existing().moderationStatus == 'warned' && incoming().moderationStatus == 'active' && incoming().moderationReason == '')
               || (incoming().moderationStatus == existing().moderationStatus && incoming().moderationReason == existing().moderationReason)
+            )
+          )
+          ||
+          // Tier 2c: Legacy profile starter credits initialization (one-time 250 cr)
+          (
+            existing().ownerUid == request.auth.uid
+            && isNotSuspendedOrBanned(existing())
+            && !('credits' in existing())
+            && incoming().updatedAt == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'credits', 'lastDailyClaimAt', 'unlockedFrames', 'equippedFrame', 'updatedAt'
+            ])
+            && incoming().credits == 250
+            && incoming().lastDailyClaimAt == 0
+            && incoming().unlockedFrames.size() == 0
+            && incoming().equippedFrame == ''
+          )
+          ||
+          // Tier 2d: Daily credit claim (+150 credits every 12 hours)
+          (
+            existing().ownerUid == request.auth.uid
+            && isNotSuspendedOrBanned(existing())
+            && 'credits' in existing()
+            && incoming().updatedAt == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'credits', 'lastDailyClaimAt', 'updatedAt'
+            ])
+            && incoming().credits == existing().credits + 150
+            && (
+              !('lastDailyClaimAt' in existing())
+              || existing().lastDailyClaimAt == 0
+              || request.time.toMillis() - existing().lastDailyClaimAt >= 43200000
+            )
+            && incoming().lastDailyClaimAt >= request.time.toMillis() - 60000
+            && incoming().lastDailyClaimAt <= request.time.toMillis() + 60000
+          )
+          ||
+          // Tier 2e: Crate gamble / open (deducts cost, awards crate-only frame or credit payout)
+          (
+            existing().ownerUid == request.auth.uid
+            && isNotSuspendedOrBanned(existing())
+            && 'credits' in existing()
+            && 'unlockedFrames' in existing()
+            && incoming().updatedAt == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'credits', 'unlockedFrames', 'updatedAt'
+            ])
+            && existing().credits >= 100
+            && incoming().credits <= existing().credits + 2500
+            && incoming().unlockedFrames.hasAll(existing().unlockedFrames)
+            && incoming().unlockedFrames.size() <= existing().unlockedFrames.size() + 1
+            && (
+              incoming().unlockedFrames.size() == existing().unlockedFrames.size()
+              || incoming().credits <= existing().credits - 100
             )
           )
           ||
@@ -303,6 +388,22 @@ service cloud.firestore {
         && isAdmin()
         && isValidModerationLog(incoming())
         && incoming().moderatorUid == request.auth.uid
+        && incoming().createdAt == request.time;
+    }
+
+    // 8. Crate Gambling Roll History
+    match /crateRolls/{rollId} {
+      allow get: if isVerifiedUser()
+        && isValidId(rollId)
+        && (isAdmin() || existing().ownerUid == request.auth.uid);
+
+      allow list: if isVerifiedUser()
+        && (isAdmin() || resource.data.ownerUid == request.auth.uid);
+
+      allow create: if isVerifiedUser()
+        && isValidId(rollId)
+        && isValidCrateRoll(incoming())
+        && incoming().ownerUid == request.auth.uid
         && incoming().createdAt == request.time;
     }
   }

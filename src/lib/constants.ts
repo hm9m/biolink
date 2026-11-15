@@ -22,7 +22,7 @@ export const CORE_BADGES: BadgeDefinition[] = [
   {
     id: 'owner',
     name: 'Owner',
-    description: 'Founder and lead administrator of comboss.lol.',
+    description: 'Founder and lead administrator of hightier.lol.',
     color: '#F59E0B',
     iconKey: 'crown',
     isSystem: true,
@@ -30,7 +30,7 @@ export const CORE_BADGES: BadgeDefinition[] = [
   {
     id: 'staff',
     name: 'Staff',
-    description: 'Official comboss.lol moderation and support team.',
+    description: 'Official hightier.lol moderation and support team.',
     color: '#3B82F6',
     iconKey: 'shield',
     isSystem: true,
@@ -46,7 +46,7 @@ export const CORE_BADGES: BadgeDefinition[] = [
   {
     id: 'premium',
     name: 'Premium',
-    description: 'Active comboss.lol Pro member with unlocked customization.',
+    description: 'Active hightier.lol Pro member with unlocked customization.',
     color: '#A78BFA',
     iconKey: 'gem',
     isSystem: true,
@@ -54,7 +54,7 @@ export const CORE_BADGES: BadgeDefinition[] = [
   {
     id: 'donator',
     name: 'Donator',
-    description: 'Direct financial supporter helping keep comboss.lol online.',
+    description: 'Direct financial supporter helping keep hightier.lol online.',
     color: '#F43F5E',
     iconKey: 'heart',
     isSystem: true,
@@ -94,9 +94,9 @@ export const PLATFORM_OPTIONS: {
   { id: 'linkedin', label: 'LinkedIn', placeholderUrl: 'https://linkedin.com/in/handle', accent: '#0A66C2' },
   { id: 'reddit', label: 'Reddit', placeholderUrl: 'https://reddit.com/u/handle', accent: '#FF4500' },
   { id: 'snapchat', label: 'Snapchat', placeholderUrl: 'https://snapchat.com/add/handle', accent: '#FFFC00' },
-  { id: 'email', label: 'Email', placeholderUrl: 'mailto:hello@comboss.lol', accent: '#94A3B8' },
-  { id: 'website', label: 'Website', placeholderUrl: 'https://comboss.lol', accent: '#E2E8F0' },
-  { id: 'custom', label: 'Custom Logo URL', placeholderUrl: 'https://example.com', accent: '#94A3B8' },
+  { id: 'email', label: 'Email', placeholderUrl: 'mailto:hello@hightier.lol', accent: '#94A3B8' },
+  { id: 'website', label: 'Website', placeholderUrl: 'https://hightier.lol', accent: '#E2E8F0' },
+  { id: 'custom', label: 'Custom Logo', placeholderUrl: 'https://example.com', accent: '#94A3B8' },
 ];
 
 export const PRESET_BACKGROUNDS = [
@@ -129,10 +129,10 @@ export const AUDIO_PRESETS = [
 ];
 
 export const SHOWCASE_PROFILE: Profile = {
-  ownerUid: 'showcase-comboss',
-  handle: 'comboss',
-  displayName: 'comboss',
-  bio: 'Digital architecture, sound design, and curated online identities. Building comboss.lol.',
+  ownerUid: 'showcase-hightier',
+  handle: 'hightier',
+  displayName: 'hightier',
+  bio: 'Digital architecture, sound design, and curated online identities. Building hightier.lol.',
   location: 'New York, NY',
   avatarUrl: DEFAULT_AVATAR,
   bannerUrl: DEFAULT_BANNER,
@@ -144,15 +144,21 @@ export const SHOWCASE_PROFILE: Profile = {
   enterGateText: 'click to enter',
   audioUrl: 'synth:obsidian',
   audioTitle: 'Obsidian Drone',
+  audioAutoplay: true,
+  audioVolume: 50,
   effect: 'embers',
   linkLayout: 'both',
   badges: ['owner', 'staff', 'known', 'premium', 'donator', 'bug_hunter'],
+  credits: 2500,
+  lastDailyClaimAt: 0,
+  unlockedFrames: ['solaris_gold'],
+  equippedFrame: 'solaris_gold',
   links: [
     {
       id: 'lnk-1',
       platform: 'discord',
       title: 'Discord Server',
-      subtitle: 'discord.gg/comboss',
+      subtitle: 'discord.gg/hightier',
       url: 'https://discord.com',
       iconUrl: '',
       visible: true,
@@ -161,7 +167,7 @@ export const SHOWCASE_PROFILE: Profile = {
       id: 'lnk-2',
       platform: 'x',
       title: 'X / Twitter',
-      subtitle: '@combosslol',
+      subtitle: '@hightierlol',
       url: 'https://x.com',
       iconUrl: '',
       visible: true,
@@ -170,7 +176,7 @@ export const SHOWCASE_PROFILE: Profile = {
       id: 'lnk-3',
       platform: 'github',
       title: 'GitHub',
-      subtitle: 'github.com/comboss',
+      subtitle: 'github.com/hightier',
       url: 'https://github.com',
       iconUrl: '',
       visible: true,
@@ -188,7 +194,7 @@ export const SHOWCASE_PROFILE: Profile = {
       id: 'lnk-5',
       platform: 'youtube',
       title: 'Visual Archive',
-      subtitle: '@comboss',
+      subtitle: '@hightier',
       url: 'https://youtube.com',
       iconUrl: '',
       visible: true,

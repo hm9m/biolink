@@ -62,10 +62,28 @@
   }
 }
 
+@keyframes frameAuroraSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.frame-aurora-spin {
+  animation: frameAuroraSpin 6s linear infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-particle,
   .animate-ember {
     animation: none !important;
     display: none;
   }
+
+  .frame-aurora-spin {
+    animation: none !important;
+  }
 }
+

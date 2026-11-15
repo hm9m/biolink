@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Award,
   Bug,
@@ -49,6 +49,10 @@ export const ResilientImage: React.FC<{
 }> = ({ src, alt, className = '', fallbackLabel }) => {
   const [errored, setErrored] = useState(false);
 
+  useEffect(() => {
+    setErrored(false);
+  }, [src]);
+
   if (!src || errored) {
     return (
       <div
@@ -80,6 +84,10 @@ export const PlatformLogo: React.FC<{
   className?: string;
 }> = ({ platform, iconUrl, size = 18, className = '' }) => {
   const [imgFailed, setImgFailed] = useState(false);
+
+  useEffect(() => {
+    setImgFailed(false);
+  }, [iconUrl]);
 
   if (iconUrl && !imgFailed) {
     return (

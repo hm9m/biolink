@@ -45,7 +45,54 @@ export type ModerationAction =
   | 'clear_warnings'
   | 'suspend'
   | 'ban'
-  | 'unban';
+  | 'unban'
+  | 'grant_credits';
+
+export type CrateRarity = 'common' | 'rare' | 'epic' | 'legendary' | 'mythic';
+export type CrateId = 'standard' | 'phantom' | 'sovereign';
+
+export interface ProfileFrameDefinition {
+  id: string;
+  name: string;
+  description: string;
+  rarity: CrateRarity;
+  primaryColor: string;
+  secondaryColor: string;
+  duplicateRefund: number;
+  crateSources: CrateId[];
+}
+
+export interface CrateLootOption {
+  id: string;
+  type: 'frame' | 'credits';
+  label: string;
+  rarity: CrateRarity;
+  oddsPercent: number;
+  frameId?: string;
+  creditsAmount?: number;
+}
+
+export interface CrateDefinition {
+  id: CrateId;
+  name: string;
+  tagline: string;
+  cost: number;
+  accentColor: string;
+  lootTable: CrateLootOption[];
+}
+
+export interface CrateRollRecord {
+  id?: string;
+  ownerUid: string;
+  crateId: CrateId;
+  cost: number;
+  rewardType: 'frame' | 'duplicate_refund' | 'credits';
+  rewardId: string;
+  rewardLabel: string;
+  rarity: CrateRarity;
+  creditsDelta: number;
+  createdAt?: Timestamp | null;
+}
 
 export interface BioLink {
   id: string;
@@ -73,10 +120,16 @@ export interface Profile {
   enterGateText: string;
   audioUrl: string;
   audioTitle: string;
+  audioAutoplay?: boolean;
+  audioVolume?: number;
   effect: VisualEffect;
   linkLayout: LinkLayout;
   badges: string[];
   hiddenBadges?: string[];
+  credits?: number;
+  lastDailyClaimAt?: number;
+  unlockedFrames?: string[];
+  equippedFrame?: string;
   links: BioLink[];
   views: number;
   moderationStatus: ModerationStatus;

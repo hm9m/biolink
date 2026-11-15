@@ -2,7 +2,7 @@
   "entities": {
     "Profile": {
       "title": "Profile",
-      "description": "Public comboss.lol bio profile with customization, links, badges, and moderation state.",
+      "description": "Public hightier.lol bio profile with customization, links, badges, and moderation state.",
       "type": "object",
       "properties": {
         "ownerUid": {
@@ -14,7 +14,7 @@
         },
         "handle": {
           "type": "string",
-          "description": "Unique comboss.lol URL handle",
+          "description": "Unique hightier.lol URL handle",
           "minLength": 2,
           "maxLength": 24,
           "pattern": "^[a-z0-9_\\-]+$"
@@ -39,21 +39,21 @@
         },
         "avatarUrl": {
           "type": "string",
-          "description": "URL or asset path for avatar image",
+          "description": "Uploaded image data URL or asset path for avatar image",
           "minLength": 0,
-          "maxLength": 500
+          "maxLength": 80000
         },
         "bannerUrl": {
           "type": "string",
-          "description": "URL or asset path for profile banner",
+          "description": "Uploaded image data URL or asset path for profile banner",
           "minLength": 0,
-          "maxLength": 500
+          "maxLength": 140000
         },
         "backgroundUrl": {
           "type": "string",
-          "description": "URL or asset path for full-page backdrop",
+          "description": "Uploaded image data URL or asset path for full-page backdrop",
           "minLength": 0,
-          "maxLength": 500
+          "maxLength": 200000
         },
         "accentColor": {
           "type": "string",
@@ -92,6 +92,14 @@
           "minLength": 0,
           "maxLength": 64
         },
+        "audioAutoplay": {
+          "type": "boolean",
+          "description": "Whether background profile music auto-plays on entry"
+        },
+        "audioVolume": {
+          "type": "number",
+          "description": "Default background audio volume percentage (0-100)"
+        },
         "effect": {
           "type": "string",
           "description": "Atmospheric overlay effect",
@@ -109,6 +117,24 @@
         "hiddenBadges": {
           "type": "array",
           "description": "Badge IDs chosen by the profile owner to hide from public view"
+        },
+        "credits": {
+          "type": "number",
+          "description": "Spendable crate credit balance"
+        },
+        "lastDailyClaimAt": {
+          "type": "number",
+          "description": "Epoch milliseconds when user last claimed daily credits"
+        },
+        "unlockedFrames": {
+          "type": "array",
+          "description": "Crate-won profile frame IDs owned by this user"
+        },
+        "equippedFrame": {
+          "type": "string",
+          "description": "Currently equipped profile frame ID (must exist in unlockedFrames or be empty)",
+          "minLength": 0,
+          "maxLength": 32
         },
         "links": {
           "type": "array",
@@ -298,7 +324,7 @@
         },
         "action": {
           "type": "string",
-          "enum": ["add_badge", "remove_badge", "warn", "remove_warning", "clear_warnings", "suspend", "ban", "unban"]
+          "enum": ["add_badge", "remove_badge", "warn", "remove_warning", "clear_warnings", "suspend", "ban", "unban", "grant_credits"]
         },
         "reason": {
           "type": "string",
@@ -322,6 +348,52 @@
         }
       },
       "required": ["targetUid", "targetHandle", "action", "reason", "details", "moderatorUid", "createdAt"]
+    },
+    "CrateRoll": {
+      "title": "CrateRoll",
+      "description": "Record of a crate gamble outcome (unlocked profile frame, duplicate refund, or credit reward).",
+      "type": "object",
+      "properties": {
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "crateId": {
+          "type": "string",
+          "enum": ["standard", "phantom", "sovereign"]
+        },
+        "cost": {
+          "type": "number"
+        },
+        "rewardType": {
+          "type": "string",
+          "enum": ["frame", "duplicate_refund", "credits"]
+        },
+        "rewardId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 48
+        },
+        "rewardLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "rarity": {
+          "type": "string",
+          "enum": ["common", "rare", "epic", "legendary", "mythic"]
+        },
+        "creditsDelta": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["ownerUid", "crateId", "cost", "rewardType", "rewardId", "rewardLabel", "rarity", "creditsDelta", "createdAt"]
     }
   },
   "firestore": {
@@ -344,6 +416,10 @@
     "/moderationLogs/{logId}": {
       "schema": { "$ref": "#/entities/ModerationLog" },
       "description": "Immutable admin moderation audit trail"
+    },
+    "/crateRolls/{rollId}": {
+      "schema": { "$ref": "#/entities/CrateRoll" },
+      "description": "Crate opening history per user"
     }
   }
 }

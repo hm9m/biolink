@@ -9,17 +9,22 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  ImagePlus,
   Plus,
   Save,
   Trash2,
 } from 'lucide-react';
 import { BioCard } from '@/src/components/BioCard';
-import { BadgeGlyph, PlatformLogo } from '@/src/components/BrandIcons';
+import { BadgeGlyph, PlatformLogo, ResilientImage } from '@/src/components/BrandIcons';
+import { CratesTab } from '@/src/components/CratesTab';
+import { ImageUploadField } from '@/src/components/ImageUploadField';
 import {
   AUDIO_PRESETS,
   PLATFORM_OPTIONS,
   PRESET_BACKGROUNDS,
 } from '@/src/lib/constants';
+import { processImageUpload } from '@/src/lib/imageUpload';
+import { parseYouTubeVideoId, toYouTubeAudioSource } from '@/src/lib/youtube';
 import {
   acknowledgeWarning,
   adminModerateProfile,
@@ -49,7 +54,7 @@ interface DashboardViewProps {
   onOpenBio: (handle: string) => void;
 }
 
-type StudioTab = 'profile' | 'links' | 'appearance' | 'badges';
+type StudioTab = 'profile' | 'links' | 'appearance' | 'badges' | 'crates';
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   user,
@@ -83,9 +88,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [enterGateText, setEnterGateText] = useState('click to enter');
   const [audioUrl, setAudioUrl] = useState('synth:obsidian');
   const [audioTitle, setAudioTitle] = useState('Obsidian Drone');
+  const [audioAutoplay, setAudioAutoplay] = useState(true);
+  const [audioVolume, setAudioVolume] = useState(50);
+  const [audioMode, setAudioMode] = useState<'preset' | 'youtube' | 'mp3'>('preset');
+  const [youtubeInput, setYoutubeInput] = useState('');
   const [effect, setEffect] = useState<VisualEffect>('none');
   const [linkLayout, setLinkLayout] = useState<LinkLayout>('cards');
   const [hiddenBadges, setHiddenBadges] = useState<string[]>([]);
+  const [equippedFrame, setEquippedFrame] = useState('');
   const [links, setLinks] = useState<BioLink[]>([]);
 
   // New link composer state
@@ -116,11 +126,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     setCardBlur(profile.cardBlur ?? 18);
     setEnterGateEnabled(profile.enterGateEnabled);
     setEnterGateText(profile.enterGateText || 'click to enter');
-    setAudioUrl(profile.audioUrl || '');
+    const loadedAudio = profile.audioUrl || '';
+    setAudioUrl(loadedAudio);
     setAudioTitle(profile.audioTitle || '');
+    setAudioAutoplay(profile.audioAutoplay ?? true);
+    setAudioVolume(profile.audioVolume ?? 50);
+    if (loadedAudio.startsWith('youtube:')) {
+      setAudioMode('youtube');
+      setYoutubeInput(loadedAudio.slice('youtube:'.length));
+    } else if (AUDIO_PRESETS.some((p) => p.id === loadedAudio)) {
+      setAudioMode('preset');
+      setYoutubeInput('');
+    } else {
+      setAudioMode('mp3');
+      setYoutubeInput('');
+    }
     setEffect(profile.effect || 'none');
     setLinkLayout(profile.linkLayout || 'cards');
     setHiddenBadges(profile.hiddenBadges || []);
+    setEquippedFrame(profile.equippedFrame || '');
     setLinks(profile.links || []);
   }, [profile]);
 
@@ -154,7 +178,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="mx-auto max-w-lg px-6 py-20">
         <div className="rounded-xl border border-white/12 bg-[#0B0D12] p-8">
           <h1 className="font-display text-2xl font-semibold text-white">
-            Claim your comboss.lol handle
+            Claim your hightier.lol handle
           </h1>
           <p className="mt-2 text-sm text-zinc-400">
             Choose a unique URL handle for your bio profile. You can update it later from your
@@ -167,7 +191,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 Profile URL
               </label>
               <div className="mt-1.5 flex items-center rounded-lg border border-white/15 bg-[#07080A] px-3.5 py-2.5 focus-within:border-white/40">
-                <span className="font-mono text-sm text-zinc-500">comboss.lol/</span>
+                <span className="font-mono text-sm text-zinc-500">hightier.lol/</span>
                 <input
                   id="claim-handle"
                   type="text"
@@ -225,14 +249,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     enterGateText,
     audioUrl,
     audioTitle,
+    audioAutoplay,
+    audioVolume,
     effect,
     linkLayout,
     hiddenBadges,
+    equippedFrame,
     links,
   };
 
   const handleSave = async () => {
     if (isLocked) return;
+    if (audioMode === 'youtube' && !parseYouTubeVideoId(audioUrl)) {
+      setSaveError('Please enter a valid YouTube video URL or 11-character video ID.');
+      return;
+    }
     setSaving(true);
     setSaveError('');
     setSaveMessage('');
@@ -252,9 +283,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         enterGateText,
         audioUrl,
         audioTitle,
+        audioAutoplay,
+        audioVolume,
         effect,
         linkLayout,
         hiddenBadges,
+        equippedFrame: Array.isArray(profile.unlockedFrames) ? equippedFrame : '',
         links,
       });
       setSaveMessage('Changes published.');
@@ -303,6 +337,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     setLinks(links.filter((l) => l.id !== id));
   };
 
+  const handleExistingLinkLogoUpload = async (id: string, file: File | undefined) => {
+    if (!file || isLocked) return;
+    setSaveError('');
+    try {
+      const optimized = await processImageUpload(file, 'icon');
+      setLinks((prev) => prev.map((l) => (l.id === id ? { ...l, iconUrl: optimized } : l)));
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Unable to upload link logo.');
+    }
+  };
+
+  const clearExistingLinkLogo = (id: string) => {
+    setLinks((prev) => prev.map((l) => (l.id === id ? { ...l, iconUrl: '' } : l)));
+  };
+
   const handleCopyUrl = async () => {
     const url = `${window.location.origin}/${profile.handle}`;
     try {
@@ -326,7 +375,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 {isBanned ? 'Your profile is banned' : 'Your profile is suspended'}
               </div>
               <p className="mt-1 text-xs text-zinc-300">
-                Reason: {profile.moderationReason || 'Violated comboss.lol guidelines.'}
+                Reason: {profile.moderationReason || 'Violated hightier.lol guidelines.'}
                 {isSuspended && profile.suspendedUntil > now
                   ? ` · Ends ${new Date(profile.suspendedUntil).toLocaleString()}`
                   : ''}
@@ -361,7 +410,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 Moderation Warning ({profile.warningCount} total)
               </div>
               <p className="mt-0.5 text-xs text-amber-200/90">
-                {profile.moderationReason || 'Please review comboss.lol community guidelines.'}
+                {profile.moderationReason || 'Please review hightier.lol community guidelines.'}
               </p>
             </div>
           </div>
@@ -392,8 +441,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="mb-8 flex flex-col justify-between gap-4 border-b border-white/10 pb-6 sm:flex-row sm:items-center">
         <div>
           <h1 className="font-display text-2xl font-semibold text-white">Creator Studio</h1>
-          <p className="mt-1 font-mono text-xs text-zinc-400">
-            comboss.lol/{profile.handle} · {profile.views.toLocaleString()} views
+          <p className="mt-1 font-mono text-xs text-zinc-400 tabular-nums">
+            hightier.lol/{profile.handle} · {profile.views.toLocaleString()} views ·{' '}
+            {(profile.credits ?? 0).toLocaleString()} credits
           </p>
         </div>
 
@@ -448,6 +498,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 { id: 'links', label: `Links (${links.length})` },
                 { id: 'appearance', label: 'Appearance & Audio' },
                 { id: 'badges', label: `Badges (${profile.badges.length})` },
+                { id: 'crates', label: 'Crates & Frames' },
               ] as { id: StudioTab; label: string }[]
             ).map((tab) => (
               <button
@@ -509,43 +560,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 />
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-medium text-zinc-300">Location / Tagline</label>
-                  <input
-                    type="text"
-                    maxLength={48}
-                    disabled={isLocked}
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder="Tokyo, JP"
-                    className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#07080A] px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-white/40 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-zinc-300">Avatar Image URL</label>
-                  <input
-                    type="text"
-                    maxLength={500}
-                    disabled={isLocked}
-                    value={avatarUrl}
-                    onChange={(e) => setAvatarUrl(e.target.value)}
-                    placeholder="https://..."
-                    className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#07080A] px-3 py-2 font-mono text-xs text-white placeholder:text-zinc-600 focus:border-white/40 focus:outline-none"
-                  />
-                </div>
-              </div>
-
               <div>
-                <label className="block text-xs font-medium text-zinc-300">Card Banner URL (optional)</label>
+                <label className="block text-xs font-medium text-zinc-300">Location / Tagline</label>
                 <input
                   type="text"
-                  maxLength={500}
+                  maxLength={48}
                   disabled={isLocked}
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="Tokyo, JP"
+                  className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#07080A] px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-white/40 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <ImageUploadField
+                  label="Avatar Image"
+                  value={avatarUrl}
+                  preset="avatar"
+                  disabled={isLocked}
+                  previewAspect="square"
+                  emptyHint="PNG, JPG, WebP, or GIF · Auto-resized to 256px"
+                  onChange={setAvatarUrl}
+                />
+                <ImageUploadField
+                  label="Card Banner (optional)"
                   value={bannerUrl}
-                  onChange={(e) => setBannerUrl(e.target.value)}
-                  placeholder="https://... (leave empty for compact header)"
-                  className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#07080A] px-3 py-2 font-mono text-xs text-white placeholder:text-zinc-600 focus:border-white/40 focus:outline-none"
+                  preset="banner"
+                  disabled={isLocked}
+                  previewAspect="wide"
+                  emptyHint="Wide header image · Auto-resized to 960px"
+                  onChange={setBannerUrl}
                 />
               </div>
             </div>
@@ -628,26 +673,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       disabled={isLocked}
                       value={newSubtitle}
                       onChange={(e) => setNewSubtitle(e.target.value)}
-                      placeholder="@comboss"
+                      placeholder="@hightier"
                       className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#07080A] px-3 py-2 font-mono text-xs text-white placeholder:text-zinc-600 focus:border-white/40 focus:outline-none"
                     />
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-zinc-300">
-                    Custom Logo Image URL (optional override)
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={500}
-                    disabled={isLocked}
-                    value={newIconUrl}
-                    onChange={(e) => setNewIconUrl(e.target.value)}
-                    placeholder="Leave empty to use built-in vector brand logo"
-                    className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#07080A] px-3 py-2 font-mono text-xs text-white placeholder:text-zinc-600 focus:border-white/40 focus:outline-none"
-                  />
-                </div>
+                <ImageUploadField
+                  label="Custom Logo Image (optional override)"
+                  value={newIconUrl}
+                  preset="icon"
+                  disabled={isLocked}
+                  previewAspect="icon"
+                  emptyHint="Leave empty to use built-in vector brand logo"
+                  onChange={setNewIconUrl}
+                />
 
                 <button
                   type="submit"
@@ -686,6 +726,36 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       </div>
 
                       <div className="flex items-center gap-1 shrink-0">
+                        <label
+                          className={`rounded p-1.5 text-zinc-400 hover:bg-white/10 hover:text-white ${
+                            isLocked ? 'pointer-events-none opacity-30' : 'cursor-pointer'
+                          }`}
+                          title="Upload custom logo image"
+                          aria-label="Upload custom logo image"
+                        >
+                          <ImagePlus size={14} />
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp,image/gif,image/avif,image/svg+xml"
+                            disabled={isLocked}
+                            onChange={(e) => {
+                              void handleExistingLinkLogoUpload(link.id, e.target.files?.[0]);
+                              e.target.value = '';
+                            }}
+                            className="hidden"
+                          />
+                        </label>
+                        {link.iconUrl && (
+                          <button
+                            type="button"
+                            disabled={isLocked}
+                            onClick={() => clearExistingLinkLogo(link.id)}
+                            className="rounded px-1.5 py-1 text-[11px] font-medium text-zinc-400 hover:bg-white/10 hover:text-white cursor-pointer"
+                            title="Revert to built-in platform logo"
+                          >
+                            Reset Logo
+                          </button>
+                        )}
                         <button
                           type="button"
                           disabled={isLocked || idx === 0}
@@ -732,9 +802,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           {activeTab === 'appearance' && (
             <div className="space-y-6 rounded-xl border border-white/10 bg-[#0B0D12] p-6">
-              <div>
-                <label className="block text-xs font-medium text-zinc-300">Backdrop Preset</label>
-                <div className="mt-2 grid grid-cols-3 gap-2.5">
+              <div className="space-y-3">
+                <label className="block text-xs font-medium text-zinc-300">Backdrop Preset or Upload</label>
+                <div className="grid grid-cols-3 gap-2.5">
                   {PRESET_BACKGROUNDS.map((preset) => (
                     <button
                       key={preset.id}
@@ -751,14 +821,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </button>
                   ))}
                 </div>
-                <input
-                  type="text"
-                  maxLength={500}
-                  disabled={isLocked}
+                <ImageUploadField
+                  label="Custom Backdrop Image"
                   value={backgroundUrl}
-                  onChange={(e) => setBackgroundUrl(e.target.value)}
-                  placeholder="Or paste custom backdrop image URL..."
-                  className="mt-2.5 w-full rounded-lg border border-white/15 bg-[#07080A] px-3 py-2 font-mono text-xs text-white placeholder:text-zinc-600 focus:border-white/40 focus:outline-none"
+                  preset="backdrop"
+                  disabled={isLocked}
+                  previewAspect="wide"
+                  emptyHint="PNG, JPG, WebP, or GIF · Auto-resized to 1280px"
+                  onChange={setBackgroundUrl}
                 />
               </div>
 
@@ -902,21 +972,49 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <label className="block text-xs font-medium text-zinc-300">
-                      Ambient Audio Track
+                      Background Music / Audio Track
                     </label>
                     <select
                       value={
-                        AUDIO_PRESETS.some((p) => p.id === audioUrl) ? audioUrl : 'custom'
+                        audioMode === 'youtube'
+                          ? 'youtube'
+                          : audioMode === 'mp3'
+                            ? 'custom'
+                            : audioUrl
                       }
                       disabled={isLocked}
                       onChange={(e) => {
                         const val = e.target.value;
-                        if (val === 'custom') {
-                          setAudioUrl('https://');
+                        if (val === 'youtube') {
+                          setAudioMode('youtube');
+                          const parsed = parseYouTubeVideoId(youtubeInput);
+                          setAudioUrl(parsed ? toYouTubeAudioSource(parsed) : '');
+                          if (
+                            !audioTitle ||
+                            AUDIO_PRESETS.some(
+                              (p) => p.label.replace(' (Built-in)', '') === audioTitle
+                            )
+                          ) {
+                            setAudioTitle('YouTube Audio');
+                          }
+                        } else if (val === 'custom') {
+                          setAudioMode('mp3');
+                          setAudioUrl(
+                            audioUrl &&
+                              !audioUrl.startsWith('synth:') &&
+                              !audioUrl.startsWith('youtube:')
+                              ? audioUrl
+                              : 'https://'
+                          );
                         } else {
+                          setAudioMode('preset');
                           setAudioUrl(val);
                           const found = AUDIO_PRESETS.find((p) => p.id === val);
-                          if (found) setAudioTitle(found.label.replace(' (Built-in)', ''));
+                          if (found) {
+                            setAudioTitle(
+                              val ? found.label.replace(' (Built-in)', '') : ''
+                            );
+                          }
                         }
                       }}
                       className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#07080A] px-3 py-2 text-sm text-white focus:outline-none"
@@ -926,6 +1024,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           {p.label}
                         </option>
                       ))}
+                      <option value="youtube">YouTube Video / Music</option>
                       <option value="custom">Custom MP3 URL</option>
                     </select>
                   </div>
@@ -946,7 +1045,57 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </div>
                 </div>
 
-                {!AUDIO_PRESETS.some((p) => p.id === audioUrl) && (
+                {audioMode === 'youtube' && (
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-zinc-300">
+                      YouTube Video URL or ID
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={240}
+                      disabled={isLocked}
+                      value={youtubeInput}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setYoutubeInput(raw);
+                        const extracted = parseYouTubeVideoId(raw);
+                        setAudioUrl(extracted ? toYouTubeAudioSource(extracted) : '');
+                      }}
+                      placeholder="https://www.youtube.com/watch?v=dQw4w9WgXcQ or video ID"
+                      className="w-full rounded-lg border border-white/15 bg-[#07080A] px-3 py-2 font-mono text-xs text-white placeholder:text-zinc-600 focus:border-white/40 focus:outline-none"
+                    />
+                    {youtubeInput.trim() ? (
+                      parseYouTubeVideoId(youtubeInput) ? (
+                        <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-[#07080A] p-2.5">
+                          <ResilientImage
+                            src={`https://i.ytimg.com/vi/${parseYouTubeVideoId(youtubeInput)}/mqdefault.jpg`}
+                            alt="YouTube video preview"
+                            fallbackLabel="YT"
+                            className="h-11 w-20 rounded object-cover shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <div className="text-xs font-medium text-emerald-300">
+                              YouTube embed ready
+                            </div>
+                            <div className="font-mono text-[11px] text-zinc-400">
+                              Video ID: {parseYouTubeVideoId(youtubeInput)}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-amber-400">
+                          Paste a valid YouTube link (youtube.com / youtu.be) or 11-character video ID.
+                        </p>
+                      )
+                    ) : (
+                      <p className="text-[11px] text-zinc-500">
+                        Accepts standard watch URLs, youtu.be links, Shorts, or an 11-character video ID.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {audioMode === 'mp3' && (
                   <div>
                     <label className="block text-xs font-medium text-zinc-300">
                       Custom Audio URL (.mp3 / .ogg)
@@ -960,6 +1109,55 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       placeholder="https://example.com/track.mp3"
                       className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#07080A] px-3 py-2 font-mono text-xs text-white focus:outline-none"
                     />
+                  </div>
+                )}
+
+                {(audioUrl !== '' || audioMode === 'youtube' || audioMode === 'mp3') && (
+                  <div className="grid gap-4 rounded-lg border border-white/10 bg-[#07080A] p-4 sm:grid-cols-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-medium text-white">Auto-Play Music</div>
+                        <div className="mt-0.5 text-[11px] text-zinc-400">
+                          Start playback automatically when visitors enter your bio.
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        onClick={() => setAudioAutoplay(!audioAutoplay)}
+                        className={`h-6 w-11 shrink-0 rounded-full transition-colors cursor-pointer ${
+                          audioAutoplay ? 'bg-white' : 'bg-white/15'
+                        }`}
+                        aria-label="Toggle background music auto-play"
+                      >
+                        <span
+                          className={`block h-4 w-4 rounded-full transition-transform ${
+                            audioAutoplay
+                              ? 'translate-x-6 bg-[#07080A]'
+                              : 'translate-x-1 bg-zinc-400'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between text-xs font-medium text-zinc-300">
+                        <span>Default Volume</span>
+                        <span className="font-mono text-zinc-400 tabular-nums">
+                          {audioVolume}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        disabled={isLocked}
+                        value={audioVolume}
+                        onChange={(e) => setAudioVolume(Number(e.target.value))}
+                        aria-label="Default background music volume"
+                        className="mt-2.5 w-full accent-white"
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -1051,6 +1249,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               )}
             </div>
+          )}
+
+          {activeTab === 'crates' && (
+            <CratesTab
+              user={user}
+              profile={profile}
+              isLocked={isLocked}
+              equippedFrame={equippedFrame}
+              onFrameEquipped={setEquippedFrame}
+              onFeedback={(msg, isError) => {
+                if (isError) {
+                  setSaveMessage('');
+                  setSaveError(msg);
+                } else {
+                  setSaveError('');
+                  setSaveMessage(msg);
+                  window.setTimeout(() => setSaveMessage(''), 3500);
+                }
+              }}
+            />
           )}
         </div>
 

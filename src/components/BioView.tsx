@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, Pause, Play, Volume2, VolumeX } from 'lucide-react';
 import { BioCard } from '@/src/components/BioCard';
 import { ResilientImage } from '@/src/components/BrandIcons';
+import { YouTubeAudioPlayer } from '@/src/components/YouTubeAudioPlayer';
 import { ambientAudio } from '@/src/lib/audio';
 import { incrementProfileView } from '@/src/lib/firestoreService';
+import { parseYouTubeVideoId } from '@/src/lib/youtube';
 import type { BadgeDefinition, Profile } from '@/src/types/comboss';
 
 interface BioViewProps {
@@ -19,20 +21,52 @@ export const BioView: React.FC<BioViewProps> = ({
   canIncrementView,
   onNavigateHome,
 }) => {
+  const youtubeVideoId = profile.audioUrl?.startsWith('youtube:')
+    ? parseYouTubeVideoId(profile.audioUrl)
+    : null;
+  const shouldAutoplay = profile.audioAutoplay !== false;
+  const defaultVolume =
+    typeof profile.audioVolume === 'number'
+      ? Math.min(100, Math.max(0, Math.round(profile.audioVolume)))
+      : 50;
+
   const [entered, setEntered] = useState(!profile.enterGateEnabled);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(defaultVolume === 0);
+  const [volume, setVolume] = useState(defaultVolume);
   const viewedRef = useRef(false);
 
   useEffect(() => {
-    setEntered(!profile.enterGateEnabled);
+    const startEntered = !profile.enterGateEnabled;
+    setEntered(startEntered);
+    setVolume(defaultVolume);
+    setIsMuted(defaultVolume === 0);
+    ambientAudio.setMuted(defaultVolume === 0);
+
+    if (startEntered && profile.audioUrl && shouldAutoplay) {
+      if (!youtubeVideoId) {
+        ambientAudio.start(profile.audioUrl, defaultVolume);
+      }
+      setIsPlaying(true);
+    } else {
+      ambientAudio.stop();
+      setIsPlaying(false);
+    }
+
     return () => {
       ambientAudio.stop();
     };
-  }, [profile.handle, profile.enterGateEnabled]);
+  }, [
+    profile.handle,
+    profile.enterGateEnabled,
+    profile.audioUrl,
+    shouldAutoplay,
+    defaultVolume,
+    youtubeVideoId,
+  ]);
 
   useEffect(() => {
-    if (entered && canIncrementView && !viewedRef.current && profile.ownerUid !== 'showcase-comboss') {
+    if (entered && canIncrementView && !viewedRef.current && profile.ownerUid !== 'showcase-hightier') {
       viewedRef.current = true;
       void incrementProfileView(profile.ownerUid, profile.views);
     }
@@ -40,19 +74,25 @@ export const BioView: React.FC<BioViewProps> = ({
 
   const handleEnter = () => {
     setEntered(true);
-    if (profile.audioUrl) {
-      ambientAudio.start(profile.audioUrl);
+    if (profile.audioUrl && shouldAutoplay) {
+      if (!youtubeVideoId) {
+        ambientAudio.start(profile.audioUrl, volume);
+      }
       setIsPlaying(true);
     }
   };
 
   const handleTogglePlay = () => {
     if (!profile.audioUrl) return;
+    if (youtubeVideoId) {
+      setIsPlaying((prev) => !prev);
+      return;
+    }
     if (isPlaying) {
       ambientAudio.stop();
       setIsPlaying(false);
     } else {
-      ambientAudio.start(profile.audioUrl);
+      ambientAudio.start(profile.audioUrl, volume);
       setIsPlaying(true);
     }
   };
@@ -60,11 +100,39 @@ export const BioView: React.FC<BioViewProps> = ({
   const handleToggleMute = () => {
     const next = !isMuted;
     setIsMuted(next);
-    ambientAudio.setMuted(next);
+    if (!youtubeVideoId) {
+      ambientAudio.setMuted(next);
+    }
+  };
+
+  const handleVolumeChange = (nextVol: number) => {
+    const clamped = Math.min(100, Math.max(0, Math.round(nextVol)));
+    setVolume(clamped);
+    if (clamped > 0 && isMuted) {
+      setIsMuted(false);
+      if (!youtubeVideoId) ambientAudio.setMuted(false);
+    } else if (clamped === 0 && !isMuted) {
+      setIsMuted(true);
+      if (!youtubeVideoId) ambientAudio.setMuted(true);
+    }
+    if (!youtubeVideoId) {
+      ambientAudio.setVolume(clamped);
+    }
   };
 
   return (
     <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-[#07080A] px-4 py-12">
+      {/* Hidden YouTube Player for Background Music */}
+      {entered && youtubeVideoId && (
+        <YouTubeAudioPlayer
+          videoId={youtubeVideoId}
+          playing={isPlaying}
+          muted={isMuted}
+          volume={volume}
+          onPlayStateChange={setIsPlaying}
+        />
+      )}
+
       {/* Background Media Layer */}
       {profile.backgroundUrl && (
         <div className="pointer-events-none fixed inset-0 z-0">
@@ -117,30 +185,54 @@ export const BioView: React.FC<BioViewProps> = ({
         </div>
       )}
 
-      {/* Top Navigation Controls */}
-      <div className="fixed top-4 left-4 right-4 z-20 flex items-center justify-between">
+      {/* Top Navigation & Audio Controls */}
+      <div className="fixed top-4 left-4 right-4 z-20 flex items-center justify-between gap-3">
         <button
           type="button"
           onClick={() => {
             ambientAudio.stop();
             onNavigateHome();
           }}
-          className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-[#0B0D12]/80 px-3 py-2 text-xs font-medium text-zinc-300 backdrop-blur-md transition-colors hover:border-white/25 hover:text-white cursor-pointer whitespace-nowrap"
+          className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-[#0B0D12]/80 px-3 py-2 text-xs font-medium text-zinc-300 backdrop-blur-md transition-colors hover:border-white/25 hover:text-white cursor-pointer whitespace-nowrap shrink-0"
         >
           <ArrowLeft size={14} />
-          comboss.lol
+          hightier.lol
         </button>
 
         {entered && profile.audioUrl && (
-          <button
-            type="button"
-            onClick={handleToggleMute}
-            className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-[#0B0D12]/80 px-3 py-2 text-xs font-medium text-zinc-300 backdrop-blur-md transition-colors hover:border-white/25 hover:text-white cursor-pointer"
-            aria-label={isMuted ? 'Unmute ambient audio' : 'Mute ambient audio'}
-          >
-            {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-            <span className="hidden sm:inline">{isMuted ? 'Muted' : 'Sound On'}</span>
-          </button>
+          <div className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-[#0B0D12]/85 px-2.5 py-1.5 text-xs font-medium text-zinc-300 backdrop-blur-md whitespace-nowrap shrink-0">
+            <button
+              type="button"
+              onClick={handleTogglePlay}
+              className="flex h-6 w-6 items-center justify-center rounded text-zinc-200 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+              aria-label={isPlaying ? 'Pause background music' : 'Play background music'}
+            >
+              {isPlaying ? <Pause size={13} /> : <Play size={13} />}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleToggleMute}
+              className="flex h-6 w-6 items-center justify-center rounded text-zinc-300 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+              aria-label={isMuted ? 'Unmute ambient audio' : 'Mute ambient audio'}
+            >
+              {isMuted || volume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
+            </button>
+
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={isMuted ? 0 : volume}
+              onChange={(e) => handleVolumeChange(Number(e.target.value))}
+              aria-label="Background music volume"
+              className="h-1.5 w-20 cursor-pointer accent-white sm:w-24"
+            />
+
+            <span className="w-8 text-right font-mono text-[11px] text-zinc-400 tabular-nums">
+              {isMuted ? 0 : volume}%
+            </span>
+          </div>
         )}
       </div>
 
@@ -155,7 +247,7 @@ export const BioView: React.FC<BioViewProps> = ({
             {profile.enterGateText || 'click to enter'}
           </span>
           <span className="mt-3 font-mono text-xs text-zinc-400">
-            comboss.lol/{profile.handle}
+            hightier.lol/{profile.handle}
           </span>
         </button>
       ) : (
@@ -177,7 +269,7 @@ export const BioView: React.FC<BioViewProps> = ({
               }}
               className="hover:text-zinc-300 transition-colors cursor-pointer"
             >
-              Claim your link at comboss.lol
+              Claim your link at hightier.lol
             </button>
           </footer>
         </main>

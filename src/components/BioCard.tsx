@@ -11,7 +11,9 @@ import {
   VolumeX,
 } from 'lucide-react';
 import { BadgeGlyph, PlatformLogo, ResilientImage } from '@/src/components/BrandIcons';
+import { FramedAvatar } from '@/src/components/FramedAvatar';
 import { CORE_BADGES } from '@/src/lib/constants';
+import { getFrameVisuals } from '@/src/lib/frameStyles';
 import type { BadgeDefinition, Profile } from '@/src/types/comboss';
 
 interface BioCardProps {
@@ -51,6 +53,7 @@ export const BioCard: React.FC<BioCardProps> = ({
 
   const cardBgOpacity = Math.min(100, Math.max(10, profile.cardOpacity)) / 100;
   const accent = profile.accentColor || '#93C5FD';
+  const frameVisual = getFrameVisuals(profile.equippedFrame, profile.unlockedFrames);
 
   if (isBanned || isActivelySuspended) {
     return (
@@ -71,8 +74,8 @@ export const BioCard: React.FC<BioCardProps> = ({
         <p className="mt-4 text-sm leading-relaxed text-zinc-300">
           {profile.moderationReason ||
             (isBanned
-              ? 'This profile has been permanently removed for violating comboss.lol guidelines.'
-              : 'This profile is temporarily suspended by comboss.lol moderation.')}
+              ? 'This profile has been permanently removed for violating hightier.lol guidelines.'
+              : 'This profile is temporarily suspended by hightier.lol moderation.')}
         </p>
         {isActivelySuspended && profile.suspendedUntil > now && (
           <p className="mt-3 font-mono text-xs text-amber-400 tabular-nums">
@@ -89,6 +92,12 @@ export const BioCard: React.FC<BioCardProps> = ({
       style={{
         backgroundColor: `rgba(11, 13, 18, ${cardBgOpacity})`,
         backdropFilter: `blur(${profile.cardBlur}px)`,
+        ...(frameVisual.frame
+          ? {
+              borderColor: frameVisual.cardBorderColor,
+              boxShadow: frameVisual.cardBoxShadow,
+            }
+          : {}),
       }}
     >
       {/* Optional Profile Banner */}
@@ -109,17 +118,15 @@ export const BioCard: React.FC<BioCardProps> = ({
       <div className={`${compact ? 'px-5 pb-5' : 'px-6 pb-6'} ${profile.bannerUrl ? '-mt-10' : 'pt-1'} relative`}>
         {/* Avatar + Top Meta Row */}
         <div className="flex items-end justify-between gap-4">
-          <div
-            className="h-20 w-20 shrink-0 overflow-hidden rounded-xl border-2 bg-[#0E1016] shadow-lg"
-            style={{ borderColor: accent }}
-          >
-            <ResilientImage
-              src={profile.avatarUrl}
-              alt={profile.displayName}
-              className="h-full w-full object-cover"
-              fallbackLabel={profile.displayName}
-            />
-          </div>
+          <FramedAvatar
+            src={profile.avatarUrl}
+            alt={profile.displayName}
+            fallbackLabel={profile.displayName}
+            accentColor={accent}
+            frameId={profile.equippedFrame}
+            unlockedFrames={profile.unlockedFrames}
+            sizeClass="h-20 w-20"
+          />
 
           {profile.audioUrl && onTogglePlay && (
             <div className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-xs text-zinc-300">
@@ -183,7 +190,7 @@ export const BioCard: React.FC<BioCardProps> = ({
           </div>
 
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-            <span className="font-mono text-zinc-300">comboss.lol/{profile.handle}</span>
+            <span className="font-mono text-zinc-300">hightier.lol/{profile.handle}</span>
             {profile.location && (
               <>
                 <span aria-hidden="true">·</span>

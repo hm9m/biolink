@@ -6,10 +6,22 @@ class AmbientAudioController {
   private htmlAudio: HTMLAudioElement | null = null;
   private playing = false;
   private muted = false;
+  private volume = 50;
 
-  public start(source: string) {
+  private getEffectiveGain(): number {
+    if (this.muted) return 0;
+    return (Math.min(100, Math.max(0, this.volume)) / 100) * 0.14;
+  }
+
+  private getEffectiveHtmlVolume(): number {
+    if (this.muted) return 0;
+    return Math.min(1, Math.max(0, this.volume / 100));
+  }
+
+  public start(source: string, volume = this.volume) {
     this.stop();
-    if (!source) return;
+    this.volume = Math.min(100, Math.max(0, Math.round(volume)));
+    if (!source || source.startsWith('youtube:')) return;
 
     if (source.startsWith('synth:')) {
       this.startSynth(source.replace('synth:', ''));
@@ -19,7 +31,7 @@ class AmbientAudioController {
     try {
       const audio = new Audio(source);
       audio.loop = true;
-      audio.volume = this.muted ? 0 : 0.35;
+      audio.volume = this.getEffectiveHtmlVolume();
       this.htmlAudio = audio;
       this.playing = true;
       void audio.play().catch(() => {
@@ -32,20 +44,22 @@ class AmbientAudioController {
 
   private startSynth(preset: string) {
     try {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (!AudioCtx) return;
 
       const ctx = new AudioCtx();
       const master = ctx.createGain();
-      master.gain.value = this.muted ? 0 : 0.08;
+      master.gain.value = this.getEffectiveGain();
       master.connect(ctx.destination);
 
       const freqs =
         preset === 'midnight'
           ? [110, 164.81, 220, 261.63]
           : preset === 'pulse'
-          ? [98, 146.83, 196]
-          : [73.42, 110, 146.83];
+            ? [98, 146.83, 196]
+            : [73.42, 110, 146.83];
 
       const filter = ctx.createBiquadFilter();
       filter.type = 'lowpass';
@@ -85,10 +99,20 @@ class AmbientAudioController {
   public setMuted(muted: boolean) {
     this.muted = muted;
     if (this.gainNode && this.ctx) {
-      this.gainNode.gain.setTargetAtTime(muted ? 0 : 0.08, this.ctx.currentTime, 0.08);
+      this.gainNode.gain.setTargetAtTime(this.getEffectiveGain(), this.ctx.currentTime, 0.08);
     }
     if (this.htmlAudio) {
-      this.htmlAudio.volume = muted ? 0 : 0.35;
+      this.htmlAudio.volume = this.getEffectiveHtmlVolume();
+    }
+  }
+
+  public setVolume(volume: number) {
+    this.volume = Math.min(100, Math.max(0, Math.round(volume)));
+    if (this.gainNode && this.ctx) {
+      this.gainNode.gain.setTargetAtTime(this.getEffectiveGain(), this.ctx.currentTime, 0.05);
+    }
+    if (this.htmlAudio) {
+      this.htmlAudio.volume = this.getEffectiveHtmlVolume();
     }
   }
 

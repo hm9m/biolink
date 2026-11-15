@@ -24,11 +24,24 @@ import {
   HEX_COLOR_REGEX,
   RESERVED_HANDLES,
 } from '@/src/lib/constants';
+import { PROFILE_IMAGE_CHAR_LIMITS } from '@/src/lib/imageUpload';
+import {
+  DAILY_CLAIM_AMOUNT,
+  DAILY_CLAIM_COOLDOWN_MS,
+  getCrateById,
+  getFrameById,
+  rollCrateLoot,
+  STARTER_CREDITS,
+} from '@/src/lib/crates';
+import { parseYouTubeVideoId, toYouTubeAudioSource } from '@/src/lib/youtube';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import type {
   BadgeDefinition,
   BadgeIconKey,
   BioLink,
+  CrateId,
+  CrateLootOption,
+  CrateRollRecord,
   ModerationAction,
   ModerationLog,
   Profile,
@@ -61,14 +74,35 @@ export function sanitizeUrl(url: string, fallback = ''): string {
   return `https://${trimmed}`.slice(0, 500);
 }
 
+export function sanitizeImageSource(src: string, maxLen: number, fallback = ''): string {
+  const trimmed = (src || '').trim();
+  if (!trimmed) return fallback;
+  if (/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(trimmed)) {
+    if (trimmed.length <= maxLen) return trimmed;
+    throw new Error('One of the uploaded images exceeds the size limit. Please replace or re-upload it.');
+  }
+  if (
+    (trimmed.startsWith('https://') ||
+      trimmed.startsWith('http://') ||
+      trimmed.startsWith('/src/assets/') ||
+      trimmed.startsWith('/assets/')) &&
+    trimmed.length <= 500
+  ) {
+    return trimmed;
+  }
+  return fallback;
+}
+
 export function sanitizeLinks(links: BioLink[]): BioLink[] {
   return links.slice(0, 25).map((link, idx) => ({
     id: clampStr(link.id || `lnk-${idx + 1}`, 40) || `lnk-${idx + 1}`,
     platform: link.platform || 'website',
     title: clampStr(link.title || 'Link', 48) || 'Link',
-    url: sanitizeUrl(link.url, 'https://comboss.lol'),
+    url: sanitizeUrl(link.url, 'https://hightier.lol'),
     subtitle: clampStr(link.subtitle || '', 64),
-    iconUrl: link.iconUrl ? sanitizeUrl(link.iconUrl, '') : '',
+    iconUrl: link.iconUrl
+      ? sanitizeImageSource(link.iconUrl, PROFILE_IMAGE_CHAR_LIMITS.icon, '')
+      : '',
     visible: link.visible !== false,
   }));
 }
@@ -78,7 +112,7 @@ export async function syncPrivateUser(user: User): Promise<void> {
   const ref = doc(db, 'usersPrivate', user.uid);
   try {
     const snap = await getDoc(ref);
-    const email = clampStr(user.email || 'user@comboss.lol', 160);
+    const email = clampStr(user.email || 'user@hightier.lol', 160);
     const displayName = clampStr(user.displayName || email.split('@')[0] || 'Creator', 80);
     if (!snap.exists()) {
       await setDoc(ref, {
@@ -164,7 +198,7 @@ export async function createProfile(user: User, requestedHandle: string): Promis
     ownerUid: user.uid,
     handle,
     displayName,
-    bio: 'Building on comboss.lol.',
+    bio: 'Building on hightier.lol.',
     location: '',
     avatarUrl: clampStr(user.photoURL || DEFAULT_AVATAR, 500) || DEFAULT_AVATAR,
     bannerUrl: DEFAULT_BANNER,
@@ -176,16 +210,22 @@ export async function createProfile(user: User, requestedHandle: string): Promis
     enterGateText: 'click to enter',
     audioUrl: 'synth:obsidian',
     audioTitle: 'Obsidian Drone',
+    audioAutoplay: true,
+    audioVolume: 50,
     effect: 'none' as const,
     linkLayout: 'cards' as const,
     badges: [] as string[],
     hiddenBadges: [] as string[],
+    credits: STARTER_CREDITS,
+    lastDailyClaimAt: 0,
+    unlockedFrames: [] as string[],
+    equippedFrame: '',
     links: [
       {
         id: 'lnk-1',
         platform: 'website' as const,
-        title: 'My comboss.lol Page',
-        url: 'https://comboss.lol',
+        title: 'My hightier.lol Page',
+        url: 'https://hightier.lol',
         subtitle: `@${handle}`,
         iconUrl: '',
         visible: true,
@@ -235,9 +275,12 @@ export async function updateOwnProfile(
     enterGateText: string;
     audioUrl: string;
     audioTitle: string;
+    audioAutoplay: boolean;
+    audioVolume: number;
     effect: Profile['effect'];
     linkLayout: Profile['linkLayout'];
     hiddenBadges: string[];
+    equippedFrame?: string;
     links: BioLink[];
   }
 ): Promise<void> {
@@ -265,27 +308,68 @@ export async function updateOwnProfile(
     new Set(updates.hiddenBadges.map((b) => clampStr(b, 32)).filter(Boolean))
   ).slice(0, 12);
 
-  batch.update(doc(db, 'profiles', uid), {
+  const cleanAvatar = sanitizeImageSource(
+    updates.avatarUrl,
+    PROFILE_IMAGE_CHAR_LIMITS.avatar,
+    ''
+  );
+  const cleanBanner = sanitizeImageSource(
+    updates.bannerUrl,
+    PROFILE_IMAGE_CHAR_LIMITS.banner,
+    ''
+  );
+  const cleanBackdrop = sanitizeImageSource(
+    updates.backgroundUrl,
+    PROFILE_IMAGE_CHAR_LIMITS.backdrop,
+    ''
+  );
+  const cleanLinks = sanitizeLinks(updates.links);
+
+  const approxPayloadBytes =
+    cleanAvatar.length +
+    cleanBanner.length +
+    cleanBackdrop.length +
+    cleanLinks.reduce((sum, l) => sum + (l.iconUrl?.length || 0) + l.title.length + l.url.length, 0);
+
+  if (approxPayloadBytes > 920000) {
+    throw new Error(
+      'Total uploaded media exceeds profile storage capacity. Remove or shrink a link logo or backdrop.'
+    );
+  }
+
+  const rawAudio = clampStr(updates.audioUrl, 500);
+  const ytId = rawAudio.startsWith('youtube:') ? parseYouTubeVideoId(rawAudio) : null;
+  const cleanAudioUrl = ytId ? toYouTubeAudioSource(ytId) : rawAudio;
+
+  const updatePayload: Record<string, unknown> = {
     handle: newHandle,
     displayName: clampStr(updates.displayName, 48) || newHandle,
     bio: clampStr(updates.bio, 320),
     location: clampStr(updates.location, 48),
-    avatarUrl: clampStr(updates.avatarUrl, 500),
-    bannerUrl: clampStr(updates.bannerUrl, 500),
-    backgroundUrl: clampStr(updates.backgroundUrl, 500),
+    avatarUrl: cleanAvatar,
+    bannerUrl: cleanBanner,
+    backgroundUrl: cleanBackdrop,
     accentColor: accent,
     cardOpacity: Math.min(100, Math.max(10, Math.round(updates.cardOpacity))),
     cardBlur: Math.min(24, Math.max(0, Math.round(updates.cardBlur))),
     enterGateEnabled: Boolean(updates.enterGateEnabled),
     enterGateText: clampStr(updates.enterGateText, 64),
-    audioUrl: clampStr(updates.audioUrl, 500),
+    audioUrl: cleanAudioUrl,
     audioTitle: clampStr(updates.audioTitle, 64),
+    audioAutoplay: Boolean(updates.audioAutoplay),
+    audioVolume: Math.min(100, Math.max(0, Math.round(updates.audioVolume))),
     effect: updates.effect,
     linkLayout: updates.linkLayout,
     hiddenBadges: cleanHiddenBadges,
-    links: sanitizeLinks(updates.links),
+    links: cleanLinks,
     updatedAt: serverTimestamp(),
-  });
+  };
+
+  if (typeof updates.equippedFrame === 'string') {
+    updatePayload.equippedFrame = clampStr(updates.equippedFrame, 32);
+  }
+
+  batch.update(doc(db, 'profiles', uid), updatePayload);
 
   try {
     await batch.commit();
@@ -616,4 +700,218 @@ export function subscribeModerationLogs(onData: (logs: ModerationLog[]) => void)
       handleFirestoreError(error, OperationType.LIST, path);
     }
   );
+}
+
+export async function initializeStarterCredits(uid: string): Promise<void> {
+  const path = `profiles/${uid}`;
+  try {
+    await updateDoc(doc(db, 'profiles', uid), {
+      credits: STARTER_CREDITS,
+      lastDailyClaimAt: 0,
+      unlockedFrames: [],
+      equippedFrame: '',
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function claimDailyCredits(profile: Profile): Promise<number> {
+  const lastClaim = profile.lastDailyClaimAt || 0;
+  const now = Date.now();
+  if (lastClaim > 0 && now - lastClaim < DAILY_CLAIM_COOLDOWN_MS) {
+    throw new Error('Daily credit drop is still on cooldown.');
+  }
+
+  const currentCredits = profile.credits ?? 0;
+  const nextCredits = currentCredits + DAILY_CLAIM_AMOUNT;
+  const path = `profiles/${profile.ownerUid}`;
+
+  try {
+    await updateDoc(doc(db, 'profiles', profile.ownerUid), {
+      credits: nextCredits,
+      lastDailyClaimAt: now,
+      updatedAt: serverTimestamp(),
+    });
+    return nextCredits;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function equipProfileFrame(uid: string, frameId: string): Promise<void> {
+  const cleanFrame = clampStr(frameId, 32);
+  const path = `profiles/${uid}`;
+  try {
+    await updateDoc(doc(db, 'profiles', uid), {
+      equippedFrame: cleanFrame,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export interface CrateOpenResult {
+  crateId: CrateId;
+  loot: CrateLootOption;
+  rewardType: 'frame' | 'duplicate_refund' | 'credits';
+  rewardLabel: string;
+  creditsDelta: number;
+  nextCredits: number;
+  nextUnlockedFrames: string[];
+  unlockedNewFrameId: string | null;
+}
+
+export async function openCrateGamble(
+  profile: Profile,
+  crateId: CrateId
+): Promise<CrateOpenResult> {
+  const crate = getCrateById(crateId);
+  const currentCredits = profile.credits ?? 0;
+  if (currentCredits < crate.cost) {
+    throw new Error(`You need ${crate.cost} credits to open ${crate.name}.`);
+  }
+
+  const existingFrames = Array.isArray(profile.unlockedFrames) ? profile.unlockedFrames : [];
+  const loot = rollCrateLoot(crate);
+
+  let rewardType: CrateOpenResult['rewardType'] = 'credits';
+  let rewardLabel = loot.label;
+  let rewardId = loot.id;
+  let creditsEarned = 0;
+  let nextFrames = existingFrames;
+  let unlockedNewFrameId: string | null = null;
+
+  if (loot.type === 'credits') {
+    rewardType = 'credits';
+    creditsEarned = loot.creditsAmount || 0;
+  } else if (loot.type === 'frame' && loot.frameId) {
+    const frameDef = getFrameById(loot.frameId);
+    if (existingFrames.includes(loot.frameId)) {
+      rewardType = 'duplicate_refund';
+      creditsEarned = frameDef?.duplicateRefund || Math.round(crate.cost * 0.6);
+      rewardLabel = `${frameDef?.name || loot.label} (Duplicate +${creditsEarned} cr)`;
+      rewardId = loot.frameId;
+    } else {
+      rewardType = 'frame';
+      nextFrames = [...existingFrames, loot.frameId];
+      unlockedNewFrameId = loot.frameId;
+      rewardLabel = frameDef?.name || loot.label;
+      rewardId = loot.frameId;
+    }
+  }
+
+  const creditsDelta = creditsEarned - crate.cost;
+  const nextCredits = Math.max(0, currentCredits + creditsDelta);
+
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'profiles', profile.ownerUid), {
+    credits: nextCredits,
+    unlockedFrames: nextFrames,
+    updatedAt: serverTimestamp(),
+  });
+
+  const rollRef = doc(collection(db, 'crateRolls'));
+  batch.set(rollRef, {
+    ownerUid: profile.ownerUid,
+    crateId: crate.id,
+    cost: crate.cost,
+    rewardType,
+    rewardId: clampStr(rewardId, 48),
+    rewardLabel: clampStr(rewardLabel, 64),
+    rarity: loot.rarity,
+    creditsDelta,
+    createdAt: serverTimestamp(),
+  });
+
+  try {
+    await batch.commit();
+    return {
+      crateId: crate.id,
+      loot,
+      rewardType,
+      rewardLabel,
+      creditsDelta,
+      nextCredits,
+      nextUnlockedFrames: nextFrames,
+      unlockedNewFrameId,
+    };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `profiles/${profile.ownerUid}`);
+  }
+}
+
+export function subscribeUserCrateRolls(
+  uid: string,
+  onData: (rolls: CrateRollRecord[]) => void
+): Unsubscribe {
+  const path = 'crateRolls';
+  const q = query(
+    collection(db, 'crateRolls'),
+    where('ownerUid', '==', uid),
+    limit(40)
+  );
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs
+        .map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<CrateRollRecord, 'id'>),
+        }))
+        .sort((a, b) => {
+          const at = a.createdAt?.toMillis?.() ?? 0;
+          const bt = b.createdAt?.toMillis?.() ?? 0;
+          return bt - at;
+        })
+        .slice(0, 15);
+      onData(list);
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, path);
+    }
+  );
+}
+
+export async function adminGrantCredits(
+  moderatorUid: string,
+  target: Profile,
+  amount: number,
+  reason: string
+): Promise<void> {
+  const cleanAmount = Math.round(amount);
+  if (!Number.isFinite(cleanAmount) || cleanAmount === 0) {
+    throw new Error('Enter a non-zero credit amount.');
+  }
+  const currentCredits = target.credits ?? 0;
+  const nextCredits = Math.min(10000000, Math.max(0, currentCredits + cleanAmount));
+  const cleanReason =
+    clampStr(reason, 300) ||
+    `${cleanAmount > 0 ? 'Granted' : 'Adjusted'} ${Math.abs(cleanAmount)} credits`;
+
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'profiles', target.ownerUid), {
+    credits: nextCredits,
+    updatedAt: serverTimestamp(),
+  });
+
+  const logRef = doc(collection(db, 'moderationLogs'));
+  batch.set(logRef, {
+    targetUid: target.ownerUid,
+    targetHandle: target.handle,
+    action: 'grant_credits',
+    reason: cleanReason,
+    details: `${cleanAmount > 0 ? '+' : ''}${cleanAmount} cr (Balance: ${nextCredits})`,
+    moderatorUid,
+    createdAt: serverTimestamp(),
+  });
+
+  try {
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `profiles/${target.ownerUid}`);
+  }
 }

@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Ban,
   CheckCircle2,
+  Coins,
   ExternalLink,
   Plus,
   Search,
@@ -13,6 +14,7 @@ import {
 import { BadgeGlyph, ResilientImage } from '@/src/components/BrandIcons';
 import {
   adminCreateAndAssignCustomBadge,
+  adminGrantCredits,
   adminModerateProfile,
   adminToggleBadge,
   createCustomBadge,
@@ -54,6 +56,8 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
   // Moderation action form inside inspector
   const [modReason, setModReason] = useState('');
   const [suspendHours, setSuspendHours] = useState(24);
+  const [creditAmount, setCreditAmount] = useState(500);
+  const [creditReason, setCreditReason] = useState('');
   const [busyAction, setBusyAction] = useState(false);
   const [actionFeedback, setActionFeedback] = useState('');
 
@@ -154,6 +158,23 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
       setActionFeedback(`Created & gave custom badge "${assignedId}" to @${target.handle}.`);
     } catch (err) {
       setActionFeedback(err instanceof Error ? err.message : 'Failed to create/assign custom badge.');
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  const handleGrantCredits = async (e: React.FormEvent, target: Profile) => {
+    e.preventDefault();
+    setBusyAction(true);
+    setActionFeedback('');
+    try {
+      await adminGrantCredits(user.uid, target, creditAmount, creditReason);
+      setCreditReason('');
+      setActionFeedback(
+        `Applied ${creditAmount > 0 ? '+' : ''}${creditAmount} credits to @${target.handle}.`
+      );
+    } catch (err) {
+      setActionFeedback(err instanceof Error ? err.message : 'Failed to update credits.');
     } finally {
       setBusyAction(false);
     }
@@ -425,7 +446,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                 Admin Profile Directory
               </h2>
               <p className="mt-0.5 text-xs text-zinc-400">
-                Browse all {profiles.length} profiles registered on comboss.lol.
+                Browse all {profiles.length} profiles registered on hightier.lol.
               </p>
             </div>
             <div className="flex items-center gap-2 rounded-lg border border-white/12 bg-[#0B0D12] px-3 py-2 sm:w-80">
@@ -481,7 +502,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                           )}
                         </div>
                         <div className="truncate font-mono text-xs text-zinc-400">
-                          comboss.lol/{prof.handle}
+                          hightier.lol/{prof.handle}
                         </div>
                       </div>
                     </div>
@@ -571,7 +592,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                 maxLength={160}
                 value={badgeDesc}
                 onChange={(e) => setBadgeDesc(e.target.value)}
-                placeholder="Early comboss.lol creator from launch week."
+                placeholder="Early hightier.lol creator from launch week."
                 required
                 className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#07080A] px-3 py-2 text-xs text-white focus:outline-none"
               />
@@ -725,8 +746,9 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                   <h2 className="font-display text-lg font-semibold text-white">
                     {selectedProfile.displayName}
                   </h2>
-                  <div className="font-mono text-xs text-zinc-400">
-                    @{selectedProfile.handle} · UID: {selectedProfile.ownerUid}
+                  <div className="font-mono text-xs text-zinc-400 tabular-nums">
+                    @{selectedProfile.handle} · {(selectedProfile.credits ?? 0).toLocaleString()} cr ·{' '}
+                    {selectedProfile.unlockedFrames?.length ?? 0} frames
                   </div>
                 </div>
               </div>
@@ -850,6 +872,66 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                       Give
                     </button>
                   </div>
+                </div>
+              </form>
+            </div>
+
+            {/* Credit Grants & Balance Adjustment */}
+            <div className="mt-6 border-t border-white/10 pt-5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                  Credits & Economy
+                </h3>
+                <span className="font-mono text-xs font-semibold text-white tabular-nums">
+                  Balance: {(selectedProfile.credits ?? 0).toLocaleString()} cr
+                </span>
+              </div>
+
+              <form
+                onSubmit={(e) => void handleGrantCredits(e, selectedProfile)}
+                className="mt-3 rounded-xl border border-white/10 bg-[#07080A] p-3.5"
+              >
+                <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
+                  {[100, 500, 1000, 2500, -250].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setCreditAmount(preset)}
+                      className={`rounded-md border px-2 py-1 font-mono text-[11px] transition-colors tabular-nums cursor-pointer ${
+                        creditAmount === preset
+                          ? 'border-white/40 bg-white/10 text-white'
+                          : 'border-white/10 bg-[#0B0D12] text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      {preset > 0 ? `+${preset}` : preset} cr
+                    </button>
+                  ))}
+                </div>
+                <div className="grid gap-2 sm:grid-cols-12">
+                  <input
+                    type="number"
+                    step={50}
+                    value={creditAmount}
+                    onChange={(e) => setCreditAmount(Number(e.target.value))}
+                    className="rounded-lg border border-white/15 bg-[#0B0D12] px-2.5 py-1.5 font-mono text-xs text-white focus:outline-none sm:col-span-3 tabular-nums"
+                    aria-label="Credit delta amount"
+                  />
+                  <input
+                    type="text"
+                    maxLength={200}
+                    value={creditReason}
+                    onChange={(e) => setCreditReason(e.target.value)}
+                    placeholder="Reason (e.g. Event prize, refund)..."
+                    className="rounded-lg border border-white/15 bg-[#0B0D12] px-2.5 py-1.5 text-xs text-white placeholder:text-zinc-600 focus:outline-none sm:col-span-6"
+                  />
+                  <button
+                    type="submit"
+                    disabled={busyAction || !creditAmount}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-[#07080A] hover:bg-zinc-200 disabled:opacity-40 cursor-pointer whitespace-nowrap sm:col-span-3"
+                  >
+                    <Coins size={13} />
+                    Apply Credits
+                  </button>
                 </div>
               </form>
             </div>
