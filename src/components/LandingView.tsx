@@ -1,8 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ArrowRight, Check, ShieldAlert } from 'lucide-react';
 import { BioCard } from '@/src/components/BioCard';
 import { SHOWCASE_PROFILE } from '@/src/lib/constants';
-import { isHandleAvailable, isHandleValid, sanitizeHandle } from '@/src/lib/firestoreService';
+import {
+  getProfileByHandle,
+  isHandleAvailable,
+  isHandleValid,
+  sanitizeHandle,
+} from '@/src/lib/firestoreService';
 import type { BadgeDefinition, LinkLayout, Profile } from '@/src/types/comboss';
 
 interface LandingViewProps {
@@ -29,6 +34,23 @@ export const LandingView: React.FC<LandingViewProps> = ({
     'idle' | 'checking' | 'available' | 'taken' | 'invalid'
   >('idle');
   const [previewLayout, setPreviewLayout] = useState<LinkLayout>('both');
+  const [showcaseBase, setShowcaseBase] = useState<Profile>(SHOWCASE_PROFILE);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getProfileByHandle('_')
+      .then((live) => {
+        if (!cancelled && live && live.moderationStatus !== 'banned') {
+          setShowcaseBase(live);
+        }
+      })
+      .catch(() => {
+        // Fallback to built-in SHOWCASE_PROFILE
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleCheck = async (raw: string) => {
     const clean = sanitizeHandle(raw);
@@ -37,8 +59,8 @@ export const LandingView: React.FC<LandingViewProps> = ({
       setAvailability('idle');
       return;
     }
-    if (!isHandleValid(clean) || clean === 'hightier') {
-      setAvailability(clean === 'hightier' ? 'taken' : 'invalid');
+    if (!isHandleValid(clean)) {
+      setAvailability('invalid');
       return;
     }
     setAvailability('checking');
@@ -61,7 +83,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
   };
 
   const showcaseCardProfile: Profile = {
-    ...SHOWCASE_PROFILE,
+    ...showcaseBase,
     linkLayout: previewLayout,
   };
 
@@ -122,7 +144,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
                 )}
                 {availability === 'invalid' && (
                   <span className="text-red-400">
-                    Use 2–24 lowercase letters, numbers, underscores, or hyphens.
+                    Use 1–24 lowercase letters, numbers, underscores, or hyphens.
                   </span>
                 )}
                 {availability === 'idle' && (
@@ -136,14 +158,6 @@ export const LandingView: React.FC<LandingViewProps> = ({
                 )}
               </div>
             </form>
-
-            <div className="mt-6 flex flex-wrap items-center gap-6 border-t border-white/10 pt-6 text-xs text-zinc-400">
-              <span>22 Brand Logos</span>
-              <span aria-hidden="true">·</span>
-              <span>6 Official Badges</span>
-              <span aria-hidden="true">·</span>
-              <span>Click-to-Enter Audio Gate</span>
-            </div>
           </div>
 
           {/* Interactive Live Bio Preview */}
@@ -167,7 +181,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
               </div>
               <button
                 type="button"
-                onClick={() => onOpenBio('hightier')}
+                onClick={() => onOpenBio('_')}
                 className="text-xs font-medium text-zinc-300 underline-offset-4 hover:text-white hover:underline whitespace-nowrap shrink-0 cursor-pointer"
               >
                 Open Full Bio
@@ -182,12 +196,12 @@ export const LandingView: React.FC<LandingViewProps> = ({
       <footer className="border-t border-white/10 py-10">
         <div className="mx-auto flex max-w-[1200px] flex-col items-start justify-between gap-4 px-6 sm:flex-row sm:items-center">
           <div className="text-xs text-zinc-500">
-            hightier.lol — Bio links, verified badges, and creator moderation.
+            hightier.lol — Bio links.
           </div>
           <div className="flex items-center gap-6 text-xs text-zinc-400">
             <button
               type="button"
-              onClick={() => onOpenBio('hightier')}
+              onClick={() => onOpenBio('_')}
               className="hover:text-white cursor-pointer"
             >
               Demo Profile

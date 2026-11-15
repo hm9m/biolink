@@ -13,7 +13,7 @@ import {
   writeBatch,
   type Unsubscribe,
 } from 'firebase/firestore';
-import type { User } from 'firebase/auth';
+import { sendPasswordResetEmail, type User } from 'firebase/auth';
 import { isEmailAdmin } from '@/src/lib/admins';
 import {
   CORE_BADGES,
@@ -34,7 +34,7 @@ import {
   STARTER_CREDITS,
 } from '@/src/lib/crates';
 import { parseYouTubeVideoId, toYouTubeAudioSource } from '@/src/lib/youtube';
-import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
+import { auth, db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import type {
   BadgeDefinition,
   BadgeIconKey,
@@ -241,7 +241,7 @@ export async function getProfileByUid(uid: string): Promise<Profile | null> {
 export async function createProfile(user: User, requestedHandle: string): Promise<Profile> {
   const handle = sanitizeHandle(requestedHandle);
   if (!isHandleValid(handle)) {
-    throw new Error('Handle must be 2–24 lowercase letters, numbers, underscores, or hyphens.');
+    throw new Error('Handle must be 1–24 lowercase letters, numbers, underscores, or hyphens.');
   }
   const available = await isHandleAvailable(handle);
   if (!available) {
@@ -345,7 +345,7 @@ export async function updateOwnProfile(
 ): Promise<void> {
   const newHandle = sanitizeHandle(updates.handle);
   if (!isHandleValid(newHandle)) {
-    throw new Error('Handle must be 2–24 lowercase characters (a-z, 0-9, _, -).');
+    throw new Error('Handle must be 1–24 lowercase characters (a-z, 0-9, _, -).');
   }
 
   const batch = writeBatch(db);
@@ -354,7 +354,10 @@ export async function updateOwnProfile(
     if (!avail) {
       throw new Error(`Handle @${newHandle} is already taken.`);
     }
-    batch.delete(doc(db, 'handles', previousHandle));
+    const prevHandleSnap = await getDoc(doc(db, 'handles', previousHandle));
+    if (prevHandleSnap.exists()) {
+      batch.delete(doc(db, 'handles', previousHandle));
+    }
     batch.set(doc(db, 'handles', newHandle), {
       handle: newHandle,
       ownerUid: uid,
@@ -540,7 +543,7 @@ export async function createCustomBadge(badge: {
 }): Promise<void> {
   const cleanId = sanitizeHandle(badge.id);
   if (!isHandleValid(cleanId)) {
-    throw new Error('Badge ID must be 2–24 lowercase characters (a-z, 0-9, _, -).');
+    throw new Error('Badge ID must be 1–24 lowercase characters (a-z, 0-9, _, -).');
   }
   const path = `badges/${cleanId}`;
   try {
@@ -618,7 +621,7 @@ export async function adminCreateAndAssignCustomBadge(
 ): Promise<string> {
   const cleanId = sanitizeHandle(badge.id || badge.name);
   if (!isHandleValid(cleanId)) {
-    throw new Error('Badge ID/name must produce 2–24 lowercase characters (a-z, 0-9, _, -).');
+    throw new Error('Badge ID/name must produce 1–24 lowercase characters (a-z, 0-9, _, -).');
   }
 
   const batch = writeBatch(db);
@@ -988,3 +991,146 @@ export async function adminGrantCredits(
     handleFirestoreError(error, OperationType.WRITE, `profiles/${target.ownerUid}`);
   }
 }
+
+export async function changeOwnHandle(
+  uid: string,
+  previousHandle: string,
+  requestedHandle: string
+): Promise<string> {
+  const newHandle = sanitizeHandle(requestedHandle);
+  if (!isHandleValid(newHandle)) {
+    throw new Error('Username must be 1–24 lowercase characters (a-z, 0-9, _, -).');
+  }
+  if (newHandle === previousHandle) {
+    return newHandle;
+  }
+  const avail = await isHandleAvailable(newHandle);
+  if (!avail) {
+    throw new Error(`Username @${newHandle} is already taken.`);
+  }
+
+  const batch = writeBatch(db);
+  const prevHandleSnap = await getDoc(doc(db, 'handles', previousHandle));
+  if (prevHandleSnap.exists()) {
+    batch.delete(doc(db, 'handles', previousHandle));
+  }
+  batch.set(doc(db, 'handles', newHandle), {
+    handle: newHandle,
+    ownerUid: uid,
+    createdAt: serverTimestamp(),
+  });
+  batch.update(doc(db, 'profiles', uid), {
+    handle: newHandle,
+    updatedAt: serverTimestamp(),
+  });
+
+  try {
+    await batch.commit();
+    return newHandle;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `profiles/${uid}`);
+  }
+}
+
+export async function adminChangeHandle(
+  moderatorUid: string,
+  target: Profile,
+  requestedHandle: string,
+  reason: string
+): Promise<string> {
+  const newHandle = sanitizeHandle(requestedHandle);
+  if (!isHandleValid(newHandle)) {
+    throw new Error('Username must be 1–24 lowercase characters (a-z, 0-9, _, -).');
+  }
+  if (newHandle === target.handle) {
+    throw new Error('New username matches the current username.');
+  }
+  const avail = await isHandleAvailable(newHandle);
+  if (!avail) {
+    throw new Error(`Username @${newHandle} is already taken.`);
+  }
+
+  const cleanReason =
+    clampStr(reason, 300) || `Changed username from @${target.handle} to @${newHandle}`;
+
+  const batch = writeBatch(db);
+  const prevHandleSnap = await getDoc(doc(db, 'handles', target.handle));
+  if (prevHandleSnap.exists()) {
+    batch.delete(doc(db, 'handles', target.handle));
+  }
+  batch.set(doc(db, 'handles', newHandle), {
+    handle: newHandle,
+    ownerUid: target.ownerUid,
+    createdAt: serverTimestamp(),
+  });
+  batch.update(doc(db, 'profiles', target.ownerUid), {
+    handle: newHandle,
+    updatedAt: serverTimestamp(),
+  });
+
+  const logRef = doc(collection(db, 'moderationLogs'));
+  batch.set(logRef, {
+    targetUid: target.ownerUid,
+    targetHandle: newHandle,
+    action: 'change_handle',
+    reason: cleanReason,
+    details: `@${target.handle} -> @${newHandle}`,
+    moderatorUid,
+    createdAt: serverTimestamp(),
+  });
+
+  try {
+    await batch.commit();
+    return newHandle;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `profiles/${target.ownerUid}`);
+  }
+}
+
+export async function adminSendPasswordReset(
+  moderatorUid: string,
+  target: Profile,
+  targetEmail: string,
+  reason: string
+): Promise<void> {
+  const cleanEmail = clampStr(targetEmail, 160);
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    throw new Error('This user does not have a valid synced email address yet.');
+  }
+
+  try {
+    await sendPasswordResetEmail(auth, cleanEmail);
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error);
+    if (raw.includes('auth/operation-not-allowed')) {
+      throw new Error(
+        'Email/Password provider is not enabled in Firebase Console yet. Enable it under Authentication → Sign-in method.'
+      );
+    }
+    if (raw.includes('auth/user-not-found')) {
+      throw new Error('No Firebase Auth account found for that email address.');
+    }
+    if (raw.includes('auth/too-many-requests')) {
+      throw new Error('Too many reset requests right now. Please wait and try again.');
+    }
+    throw new Error(raw || 'Failed to send password reset email.');
+  }
+
+  const cleanReason =
+    clampStr(reason, 300) || `Sent password reset email to ${cleanEmail}`;
+  const logRef = doc(collection(db, 'moderationLogs'));
+  try {
+    await setDoc(logRef, {
+      targetUid: target.ownerUid,
+      targetHandle: target.handle,
+      action: 'password_reset',
+      reason: cleanReason,
+      details: cleanEmail,
+      moderatorUid,
+      createdAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, `moderationLogs/${logRef.id}`);
+  }
+}
+

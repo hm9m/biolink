@@ -8,6 +8,7 @@ import {
   Copy,
   ExternalLink,
   KeyRound,
+  Mail,
   Plus,
   Search,
   Trash2,
@@ -16,9 +17,11 @@ import {
 } from 'lucide-react';
 import { BadgeGlyph, ResilientImage } from '@/src/components/BrandIcons';
 import {
+  adminChangeHandle,
   adminCreateAndAssignCustomBadge,
   adminGrantCredits,
   adminModerateProfile,
+  adminSendPasswordReset,
   adminToggleBadge,
   createCustomBadge,
   deleteCustomBadge,
@@ -65,6 +68,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
   const [suspendHours, setSuspendHours] = useState(24);
   const [creditAmount, setCreditAmount] = useState(500);
   const [creditReason, setCreditReason] = useState('');
+  const [adminNewHandle, setAdminNewHandle] = useState('');
   const [busyAction, setBusyAction] = useState(false);
   const [actionFeedback, setActionFeedback] = useState('');
 
@@ -188,6 +192,37 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
       );
     } catch (err) {
       setActionFeedback(err instanceof Error ? err.message : 'Failed to update credits.');
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  const handleSendPasswordReset = async (target: Profile, email?: string) => {
+    if (!email) return;
+    setBusyAction(true);
+    setActionFeedback('');
+    try {
+      await adminSendPasswordReset(user.uid, target, email, modReason);
+      setActionFeedback(`Password reset email sent to ${email} for @${target.handle}.`);
+    } catch (err) {
+      setActionFeedback(err instanceof Error ? err.message : 'Failed to send password reset.');
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  const handleAdminChangeHandle = async (e: React.FormEvent, target: Profile) => {
+    e.preventDefault();
+    const clean = sanitizeHandle(adminNewHandle);
+    if (!clean) return;
+    setBusyAction(true);
+    setActionFeedback('');
+    try {
+      const updated = await adminChangeHandle(user.uid, target, clean, modReason);
+      setAdminNewHandle('');
+      setActionFeedback(`Changed @${target.handle}'s username to @${updated}.`);
+    } catch (err) {
+      setActionFeedback(err instanceof Error ? err.message : 'Failed to update username.');
     } finally {
       setBusyAction(false);
     }
@@ -854,6 +889,63 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                   {selectedProfile.ownerUid}
                 </div>
               </div>
+            </div>
+
+            {/* Password Reset & Username Controls */}
+            <div className="mt-4 grid gap-3 rounded-xl border border-white/10 bg-[#07080A] p-4 sm:grid-cols-2">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                  Reset Account Password
+                </div>
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  Sends a Firebase password reset link to{' '}
+                  <span className="font-mono text-zinc-300">
+                    {selectedPrivate?.email || 'no synced email'}
+                  </span>
+                  .
+                </p>
+                <button
+                  type="button"
+                  disabled={busyAction || !selectedPrivate?.email}
+                  onClick={() =>
+                    void handleSendPasswordReset(selectedProfile, selectedPrivate?.email)
+                  }
+                  className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg border border-white/20 bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white hover:bg-white/12 disabled:opacity-40 cursor-pointer"
+                >
+                  <Mail size={13} />
+                  Send Password Reset Email
+                </button>
+              </div>
+
+              <form onSubmit={(e) => void handleAdminChangeHandle(e, selectedProfile)}>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                  Change Username (@{selectedProfile.handle})
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <div className="flex flex-1 items-center rounded-lg border border-white/15 bg-[#0B0D12] px-2.5 py-1.5">
+                    <span className="font-mono text-xs text-zinc-500">@</span>
+                    <input
+                      type="text"
+                      maxLength={24}
+                      value={adminNewHandle}
+                      onChange={(e) => setAdminNewHandle(sanitizeHandle(e.target.value))}
+                      placeholder="new_username"
+                      className="ml-1 min-w-0 flex-1 bg-transparent font-mono text-xs text-white placeholder:text-zinc-600 focus:outline-none"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={
+                      busyAction ||
+                      !adminNewHandle.trim() ||
+                      adminNewHandle === selectedProfile.handle
+                    }
+                    className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-[#07080A] hover:bg-zinc-200 disabled:opacity-40 whitespace-nowrap cursor-pointer"
+                  >
+                    Rename
+                  </button>
+                </div>
+              </form>
             </div>
 
             {/* Badges Assignment */}

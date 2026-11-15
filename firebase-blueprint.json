@@ -15,7 +15,7 @@
         "handle": {
           "type": "string",
           "description": "Unique hightier.lol URL handle",
-          "minLength": 2,
+          "minLength": 1,
           "maxLength": 24,
           "pattern": "^[a-z0-9_\\-]+$"
         },
@@ -215,7 +215,7 @@
       "properties": {
         "handle": {
           "type": "string",
-          "minLength": 2,
+          "minLength": 1,
           "maxLength": 24,
           "pattern": "^[a-z0-9_\\-]+$"
         },
@@ -326,12 +326,12 @@
         },
         "targetHandle": {
           "type": "string",
-          "minLength": 2,
+          "minLength": 1,
           "maxLength": 24
         },
         "action": {
           "type": "string",
-          "enum": ["add_badge", "remove_badge", "warn", "remove_warning", "clear_warnings", "suspend", "ban", "unban", "grant_credits"]
+          "enum": ["add_badge", "remove_badge", "warn", "remove_warning", "clear_warnings", "suspend", "ban", "unban", "grant_credits", "password_reset", "change_handle"]
         },
         "reason": {
           "type": "string",

@@ -46,7 +46,9 @@ export type ModerationAction =
   | 'suspend'
   | 'ban'
   | 'unban'
-  | 'grant_credits';
+  | 'grant_credits'
+  | 'password_reset'
+  | 'change_handle';
 
 export type CrateRarity = 'common' | 'rare' | 'epic' | 'legendary' | 'mythic';
 export type CrateId = 'standard' | 'phantom' | 'sovereign';

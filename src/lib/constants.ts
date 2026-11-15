@@ -16,7 +16,7 @@ export const RESERVED_HANDLES = [
   'forgot-password',
 ];
 
-export const HANDLE_REGEX = /^[a-z0-9_-]{2,24}$/;
+export const HANDLE_REGEX = /^[a-z0-9_-]{1,24}$/;
 export const HEX_COLOR_REGEX = /^#[0-9a-fA-F]{6}$/;
 
 export const CORE_BADGES: BadgeDefinition[] = [
@@ -131,7 +131,7 @@ export const AUDIO_PRESETS = [
 
 export const SHOWCASE_PROFILE: Profile = {
   ownerUid: 'showcase-hightier',
-  handle: 'hightier',
+  handle: '_',
   displayName: 'hightier',
   bio: 'Digital architecture, sound design, and curated online identities. Building hightier.lol.',
   location: 'New York, NY',

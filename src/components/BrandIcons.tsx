@@ -14,6 +14,22 @@ import {
 } from 'lucide-react';
 import type { BadgeIconKey, PlatformId } from '@/src/types/comboss';
 
+export const DiscordStaffBadge: React.FC<{
+  size?: number;
+  color?: string;
+  className?: string;
+}> = ({ size = 15, className = '' }) => (
+  <img
+    src="/assets/aistudio/discord-staff-badge.png"
+    alt="Discord Staff"
+    width={size}
+    height={size}
+    className={`shrink-0 object-contain select-none ${className}`}
+    style={{ width: size, height: size }}
+    draggable={false}
+  />
+);
+
 export const BadgeGlyph: React.FC<{
   iconKey: BadgeIconKey;
   color: string;

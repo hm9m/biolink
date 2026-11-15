@@ -29,6 +29,7 @@ import { parseYouTubeVideoId, toYouTubeAudioSource } from '@/src/lib/youtube';
 import {
   acknowledgeWarning,
   adminModerateProfile,
+  changeOwnHandle,
   createProfile,
   isHandleAvailable,
   isHandleValid,
@@ -117,6 +118,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [privateUser, setPrivateUser] = useState<UserPrivateRecord | null>(null);
   const [hideRecoveryId, setHideRecoveryId] = useState(false);
   const [copiedRecoveryId, setCopiedRecoveryId] = useState(false);
+  const [handleAvailability, setHandleAvailability] = useState<
+    'idle' | 'current' | 'checking' | 'available' | 'taken' | 'invalid'
+  >('current');
+  const [handleBusy, setHandleBusy] = useState(false);
 
   useEffect(() => {
     const unsub = subscribeOwnPrivateUser(user.uid, setPrivateUser);
@@ -157,6 +162,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     setHiddenBadges(profile.hiddenBadges || []);
     setEquippedFrame(profile.equippedFrame || '');
     setLinks(profile.links || []);
+    setHandleAvailability('current');
   }, [profile]);
 
   const handleClaimSubmit = async (e: React.FormEvent) => {
@@ -164,7 +170,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     setClaimError('');
     const clean = sanitizeHandle(claimHandle);
     if (!isHandleValid(clean)) {
-      setClaimError('Handle must be 2–24 lowercase characters (a-z, 0-9, _, -).');
+      setClaimError('Handle must be 1–24 lowercase characters (a-z, 0-9, _, -).');
       return;
     }
     setClaiming(true);
@@ -338,6 +344,51 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       setSaveError(err instanceof Error ? err.message : 'Failed to save changes.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleUsernameInputChange = async (raw: string) => {
+    const clean = sanitizeHandle(raw);
+    setHandle(clean);
+    if (clean === profile.handle) {
+      setHandleAvailability('current');
+      return;
+    }
+    if (!clean || !isHandleValid(clean)) {
+      setHandleAvailability('invalid');
+      return;
+    }
+    setHandleAvailability('checking');
+    try {
+      const avail = await isHandleAvailable(clean);
+      setHandleAvailability(avail ? 'available' : 'taken');
+    } catch {
+      setHandleAvailability('idle');
+    }
+  };
+
+  const handleChangeUsernameSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isLocked || handleBusy) return;
+    const clean = sanitizeHandle(handle);
+    if (!isHandleValid(clean)) {
+      setSaveError('Username must be 1–24 lowercase characters (a-z, 0-9, _, -).');
+      return;
+    }
+    if (clean === profile.handle) return;
+    setHandleBusy(true);
+    setSaveError('');
+    setSaveMessage('');
+    try {
+      const updated = await changeOwnHandle(user.uid, profile.handle, clean);
+      setHandle(updated);
+      setHandleAvailability('current');
+      setSaveMessage(`Username updated to @${updated}.`);
+      window.setTimeout(() => setSaveMessage(''), 3000);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Unable to change username.');
+    } finally {
+      setHandleBusy(false);
     }
   };
 
@@ -562,17 +613,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="space-y-5 rounded-xl border border-white/10 bg-[#0B0D12] p-6">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="block text-xs font-medium text-zinc-300">Handle</label>
+                  <label className="block text-xs font-medium text-zinc-300">
+                    Username / Handle
+                  </label>
                   <div className="mt-1.5 flex items-center rounded-lg border border-white/15 bg-[#07080A] px-3 py-2">
                     <span className="font-mono text-xs text-zinc-500">@</span>
                     <input
                       type="text"
                       value={handle}
                       disabled={isLocked}
-                      onChange={(e) => setHandle(sanitizeHandle(e.target.value))}
+                      onChange={(e) => void handleUsernameInputChange(e.target.value)}
                       className="ml-1.5 w-full bg-transparent font-mono text-sm text-white focus:outline-none"
                     />
                   </div>
+                  {handle !== profile.handle && (
+                    <div className="mt-1 text-[11px]">
+                      {handleAvailability === 'checking' && (
+                        <span className="text-zinc-400">Checking availability...</span>
+                      )}
+                      {handleAvailability === 'available' && (
+                        <span className="text-emerald-400">@{handle} is available</span>
+                      )}
+                      {handleAvailability === 'taken' && (
+                        <span className="text-amber-400">@{handle} is already taken</span>
+                      )}
+                      {handleAvailability === 'invalid' && (
+                        <span className="text-red-400">
+                          1–24 chars: a-z, 0-9, _, - (non-reserved)
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-zinc-300">Display Name</label>
@@ -1323,12 +1394,73 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="space-y-6 rounded-xl border border-white/10 bg-[#0B0D12] p-6">
               <div>
                 <h2 className="font-display text-base font-semibold text-white">
-                  Account & Recovery Settings
+                  Account &amp; Recovery Settings
                 </h2>
                 <p className="mt-1 text-xs text-zinc-400">
-                  Private account details visible only to you and hightier.lol administrators.
+                  Manage your username and view private recovery details visible only to you and
+                  hightier.lol administrators.
                 </p>
               </div>
+
+              {/* Change Username Card */}
+              <form
+                onSubmit={(e) => void handleChangeUsernameSubmit(e)}
+                className="rounded-xl border border-white/12 bg-[#07080A] p-5"
+              >
+                <div className="text-sm font-semibold text-white">Change Username</div>
+                <p className="mt-0.5 text-xs text-zinc-400">
+                  Update your bio URL handle (1–24 characters). Your previous username is released
+                  immediately.
+                </p>
+                <div className="mt-3 flex flex-col gap-2.5 sm:flex-row">
+                  <div className="flex flex-1 items-center rounded-lg border border-white/15 bg-[#0B0D12] px-3 py-2 focus-within:border-white/40">
+                    <span className="font-mono text-xs text-zinc-500 select-none">
+                      hightier.lol/
+                    </span>
+                    <input
+                      type="text"
+                      value={handle}
+                      disabled={isLocked || handleBusy}
+                      onChange={(e) => void handleUsernameInputChange(e.target.value)}
+                      className="min-w-0 flex-1 bg-transparent font-mono text-sm text-white focus:outline-none"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={
+                      isLocked ||
+                      handleBusy ||
+                      handle === profile.handle ||
+                      handleAvailability === 'taken' ||
+                      handleAvailability === 'invalid' ||
+                      handleAvailability === 'checking'
+                    }
+                    className="rounded-lg bg-white px-4 py-2 text-xs font-semibold text-[#07080A] hover:bg-zinc-200 disabled:opacity-45 whitespace-nowrap cursor-pointer"
+                  >
+                    {handleBusy ? 'Updating...' : 'Change Username'}
+                  </button>
+                </div>
+                {handle !== profile.handle && (
+                  <div className="mt-2 text-xs">
+                    {handleAvailability === 'checking' && (
+                      <span className="text-zinc-400">Checking availability...</span>
+                    )}
+                    {handleAvailability === 'available' && (
+                      <span className="text-emerald-400">
+                        hightier.lol/{handle} is available.
+                      </span>
+                    )}
+                    {handleAvailability === 'taken' && (
+                      <span className="text-amber-400">@{handle} is already taken.</span>
+                    )}
+                    {handleAvailability === 'invalid' && (
+                      <span className="text-red-400">
+                        Username must be 1–24 lowercase characters (a-z, 0-9, _, -).
+                      </span>
+                    )}
+                  </div>
+                )}
+              </form>
 
               <div className="rounded-xl border border-white/12 bg-[#07080A] p-5">
                 <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">

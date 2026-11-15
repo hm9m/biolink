@@ -36,10 +36,10 @@ service cloud.firestore {
 
     function isValidHandle(handle) {
       return handle is string
-        && handle.size() >= 2
+        && handle.size() >= 1
         && handle.size() <= 24
         && handle.matches('^[a-z0-9_\\-]+$')
-        && !(handle in ['admin', 'dashboard', 'auth', 'login', 'directory', 'api', 'settings']);
+        && !(handle in ['admin', 'dashboard', 'auth', 'login', 'directory', 'api', 'settings', 'forgot-password']);
     }
 
     function isNotSuspendedOrBanned(data) {
@@ -146,8 +146,8 @@ service cloud.firestore {
       return data.keys().hasAll(['targetUid', 'targetHandle', 'action', 'reason', 'details', 'moderatorUid', 'createdAt'])
         && data.keys().hasOnly(['targetUid', 'targetHandle', 'action', 'reason', 'details', 'moderatorUid', 'createdAt'])
         && isValidId(data.targetUid)
-        && data.targetHandle is string && data.targetHandle.size() >= 2 && data.targetHandle.size() <= 24
-        && data.action in ['add_badge', 'remove_badge', 'warn', 'remove_warning', 'clear_warnings', 'suspend', 'ban', 'unban', 'grant_credits']
+        && data.targetHandle is string && data.targetHandle.size() >= 1 && data.targetHandle.size() <= 24
+        && data.action in ['add_badge', 'remove_badge', 'warn', 'remove_warning', 'clear_warnings', 'suspend', 'ban', 'unban', 'grant_credits', 'password_reset', 'change_handle']
         && data.reason is string && data.reason.size() <= 300
         && data.details is string && data.details.size() <= 128
         && isValidId(data.moderatorUid)
@@ -204,14 +204,18 @@ service cloud.firestore {
         && incoming().ownerUid == existing().ownerUid
         && incoming().createdAt == existing().createdAt
         && (
-          // Tier 1: Admin actions (badges, credits, moderation)
+          // Tier 1: Admin actions (badges, credits, handle, moderation)
           (
             isAdmin()
             && incoming().updatedAt == request.time
             && incoming().diff(existing()).affectedKeys().hasOnly([
               'badges', 'credits', 'lastDailyClaimAt', 'unlockedFrames', 'equippedFrame',
-              'moderationStatus', 'moderationReason', 'suspendedUntil', 'warningCount', 'updatedAt'
+              'handle', 'moderationStatus', 'moderationReason', 'suspendedUntil', 'warningCount', 'updatedAt'
             ])
+            && (
+              incoming().handle == existing().handle
+              || getAfter(/databases/$(database)/documents/handles/$(incoming().handle)).data.ownerUid == existing().ownerUid
+            )
           )
           ||
           // Tier 2a: Profile owner editing bio, links, appearance, & equipping won frames
@@ -333,7 +337,7 @@ service cloud.firestore {
         && isValidHandle(handle)
         && isValidHandleDoc(incoming())
         && incoming().handle == handle
-        && incoming().ownerUid == request.auth.uid
+        && (incoming().ownerUid == request.auth.uid || isAdmin())
         && incoming().createdAt == request.time
         && !exists(/databases/$(database)/documents/handles/$(handle));
 

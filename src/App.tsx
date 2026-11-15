@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { Shield } from 'lucide-react';
 import { AdminPanelView } from '@/src/components/AdminPanelView';
 import { AuthPanel, ForgotPasswordView } from '@/src/components/AuthPanel';
 import { BioView } from '@/src/components/BioView';
-import { PlatformLogo } from '@/src/components/BrandIcons';
+import { DiscordStaffBadge, PlatformLogo } from '@/src/components/BrandIcons';
 import { DashboardView } from '@/src/components/DashboardView';
 import { LandingView } from '@/src/components/LandingView';
 import { CORE_BADGES, SHOWCASE_PROFILE } from '@/src/lib/constants';
@@ -32,7 +31,7 @@ function parsePath(pathname: string): RouteState {
   if (clean === 'dashboard') return { view: 'dashboard' };
   if (clean === 'admin') return { view: 'admin' };
   if (clean === 'forgot-password') return { view: 'forgot-password' };
-  return { view: 'bio', handle: sanitizeHandle(clean) || 'hightier' };
+  return { view: 'bio', handle: sanitizeHandle(clean) || '_' };
 }
 
 class ErrorBoundary extends React.Component<
@@ -163,7 +162,7 @@ export default function App() {
         if (found) {
           setBioProfile(found);
           setBioNotFound(false);
-        } else if (route.handle === 'hightier') {
+        } else if (route.handle === '_') {
           setBioProfile(SHOWCASE_PROFILE);
           setBioNotFound(false);
         } else {
@@ -173,7 +172,7 @@ export default function App() {
       })
       .catch(() => {
         if (cancelled) return;
-        if (route.handle === 'hightier') {
+        if (route.handle === '_') {
           setBioProfile(SHOWCASE_PROFILE);
           setBioNotFound(false);
         } else {
@@ -311,13 +310,13 @@ export default function App() {
                     route.view === 'admin' ? 'text-white' : 'hover:text-white'
                   }`}
                 >
-                  <Shield size={14} className="shrink-0" />
+                  <DiscordStaffBadge size={15} className="shrink-0" />
                   Admin Panel
                 </button>
               ) : (
                 <button
                   type="button"
-                  onClick={() => navigate('/hightier')}
+                  onClick={() => navigate('/_')}
                   className="hover:text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   Demo Bio
@@ -369,7 +368,7 @@ export default function App() {
             <PlatformLogo platform="discord" size={12} />
             Discord
           </a>
-          <button type="button" onClick={() => navigate('/hightier')} className="whitespace-nowrap hover:text-white">
+          <button type="button" onClick={() => navigate('/_')} className="whitespace-nowrap hover:text-white">
             Demo Bio
           </button>
           <button type="button" onClick={() => navigate('/dashboard')} className="whitespace-nowrap hover:text-white">
@@ -381,7 +380,7 @@ export default function App() {
               onClick={() => navigate('/admin')}
               className="inline-flex items-center gap-1 whitespace-nowrap hover:text-white"
             >
-              <Shield size={12} className="shrink-0" />
+              <DiscordStaffBadge size={13} className="shrink-0" />
               Admin Panel
             </button>
           )}
