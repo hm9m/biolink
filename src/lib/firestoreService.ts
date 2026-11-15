@@ -456,7 +456,7 @@ export function subscribeAllProfilesAdmin(
 
 export function subscribeBadges(onData: (badges: BadgeDefinition[]) => void): Unsubscribe {
   const path = 'badges';
-  const q = query(collection(db, 'badges'));
+  const q = query(collection(db, 'badges'), where('isSystem', 'in', [true, false]));
   return onSnapshot(
     q,
     (snap) => {
@@ -806,41 +806,44 @@ export async function openCrateGamble(
   const creditsDelta = creditsEarned - crate.cost;
   const nextCredits = Math.max(0, currentCredits + creditsDelta);
 
-  const batch = writeBatch(db);
-  batch.update(doc(db, 'profiles', profile.ownerUid), {
-    credits: nextCredits,
-    unlockedFrames: nextFrames,
-    updatedAt: serverTimestamp(),
-  });
+  const profilePath = `profiles/${profile.ownerUid}`;
+  try {
+    await updateDoc(doc(db, 'profiles', profile.ownerUid), {
+      credits: nextCredits,
+      unlockedFrames: nextFrames,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, profilePath);
+  }
 
   const rollRef = doc(collection(db, 'crateRolls'));
-  batch.set(rollRef, {
-    ownerUid: profile.ownerUid,
-    crateId: crate.id,
-    cost: crate.cost,
-    rewardType,
-    rewardId: clampStr(rewardId, 48),
-    rewardLabel: clampStr(rewardLabel, 64),
-    rarity: loot.rarity,
-    creditsDelta,
-    createdAt: serverTimestamp(),
-  });
-
   try {
-    await batch.commit();
-    return {
+    await setDoc(rollRef, {
+      ownerUid: profile.ownerUid,
       crateId: crate.id,
-      loot,
+      cost: crate.cost,
       rewardType,
-      rewardLabel,
+      rewardId: clampStr(rewardId, 48),
+      rewardLabel: clampStr(rewardLabel, 64),
+      rarity: loot.rarity,
       creditsDelta,
-      nextCredits,
-      nextUnlockedFrames: nextFrames,
-      unlockedNewFrameId,
-    };
+      createdAt: serverTimestamp(),
+    });
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `profiles/${profile.ownerUid}`);
+    handleFirestoreError(error, OperationType.CREATE, `crateRolls/${rollRef.id}`);
   }
+
+  return {
+    crateId: crate.id,
+    loot,
+    rewardType,
+    rewardLabel,
+    creditsDelta,
+    nextCredits,
+    nextUnlockedFrames: nextFrames,
+    unlockedNewFrameId,
+  };
 }
 
 export function subscribeUserCrateRolls(
@@ -893,10 +896,21 @@ export async function adminGrantCredits(
     `${cleanAmount > 0 ? 'Granted' : 'Adjusted'} ${Math.abs(cleanAmount)} credits`;
 
   const batch = writeBatch(db);
-  batch.update(doc(db, 'profiles', target.ownerUid), {
+  const profilePatch: Record<string, unknown> = {
     credits: nextCredits,
     updatedAt: serverTimestamp(),
-  });
+  };
+  if (target.lastDailyClaimAt === undefined) {
+    profilePatch.lastDailyClaimAt = 0;
+  }
+  if (!Array.isArray(target.unlockedFrames)) {
+    profilePatch.unlockedFrames = [];
+  }
+  if (typeof target.equippedFrame !== 'string') {
+    profilePatch.equippedFrame = '';
+  }
+
+  batch.update(doc(db, 'profiles', target.ownerUid), profilePatch);
 
   const logRef = doc(collection(db, 'moderationLogs'));
   batch.set(logRef, {

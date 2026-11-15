@@ -1203,8 +1203,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               ) : (
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
                   {profile.badges.map((id) => {
-                    const def = badgeCatalog.find((b) => b.id === id);
-                    if (!def) return null;
+                    const def = badgeCatalog.find((b) => b.id === id) || {
+                      id,
+                      name: id,
+                      description: 'Custom profile badge',
+                      color: '#93C5FD',
+                      iconKey: 'award' as const,
+                      isSystem: false,
+                    };
                     const isHidden = hiddenBadges.includes(id);
                     const toggleVisibility = () => {
                       setHiddenBadges((prev) =>

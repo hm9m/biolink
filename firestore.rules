@@ -204,8 +204,8 @@ service cloud.firestore {
             isAdmin()
             && incoming().updatedAt == request.time
             && incoming().diff(existing()).affectedKeys().hasOnly([
-              'badges', 'credits', 'moderationStatus', 'moderationReason',
-              'suspendedUntil', 'warningCount', 'updatedAt'
+              'badges', 'credits', 'lastDailyClaimAt', 'unlockedFrames', 'equippedFrame',
+              'moderationStatus', 'moderationReason', 'suspendedUntil', 'warningCount', 'updatedAt'
             ])
           )
           ||
@@ -271,8 +271,8 @@ service cloud.firestore {
               || existing().lastDailyClaimAt == 0
               || request.time.toMillis() - existing().lastDailyClaimAt >= 43200000
             )
-            && incoming().lastDailyClaimAt >= request.time.toMillis() - 60000
-            && incoming().lastDailyClaimAt <= request.time.toMillis() + 60000
+            && incoming().lastDailyClaimAt >= request.time.toMillis() - 300000
+            && incoming().lastDailyClaimAt <= request.time.toMillis() + 300000
           )
           ||
           // Tier 2e: Crate gamble / open (deducts cost, awards crate-only frame or credit payout)
@@ -280,17 +280,16 @@ service cloud.firestore {
             existing().ownerUid == request.auth.uid
             && isNotSuspendedOrBanned(existing())
             && 'credits' in existing()
-            && 'unlockedFrames' in existing()
             && incoming().updatedAt == request.time
             && incoming().diff(existing()).affectedKeys().hasOnly([
               'credits', 'unlockedFrames', 'updatedAt'
             ])
             && existing().credits >= 100
             && incoming().credits <= existing().credits + 2500
-            && incoming().unlockedFrames.hasAll(existing().unlockedFrames)
-            && incoming().unlockedFrames.size() <= existing().unlockedFrames.size() + 1
+            && incoming().unlockedFrames.hasAll(existing().get('unlockedFrames', []))
+            && incoming().unlockedFrames.size() <= existing().get('unlockedFrames', []).size() + 1
             && (
-              incoming().unlockedFrames.size() == existing().unlockedFrames.size()
+              incoming().unlockedFrames.size() == existing().get('unlockedFrames', []).size()
               || incoming().credits <= existing().credits - 100
             )
           )
@@ -347,7 +346,7 @@ service cloud.firestore {
     // 6. Badge Definitions Catalog
     match /badges/{badgeId} {
       allow get: if isValidHandle(badgeId);
-      allow list: if resource.data.id is string;
+      allow list: if resource.data.isSystem in [true, false];
 
       allow create: if isVerifiedUser()
         && isValidHandle(badgeId)
